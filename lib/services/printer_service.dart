@@ -8,8 +8,9 @@ class PrinterService {
   // Fungsi untuk mencari printer Bluetooth yang sudah di-pairing di HP
   static Future<List<Printer>> getPrinters() async {
     try {
+      // Tambahkan await dan perbaiki ConnectionType
       List<Printer> printers = await _instance.getPrinters();
-      return printers.where((p) => p.connectionType == ConnectionType.bluetooth).toList();
+      return printers.where((p) => p.connectionType == ConnectionType.BLUETOOTH).toList();
     } catch (e) {
       return [];
     }
@@ -53,9 +54,10 @@ class PrinterService {
       struk += "--------------------------------\n";
       struk += "      Terima Kasih :)\n\n\n\n";
 
-      // Perintah cetak
+      // Perintah cetak menggunakan API terbaru
       await _instance.connect(printer);
-      await _instance.printText(struk);
+      // Ganti printText menjadi printCustom dengan ESC/POS text
+      await _instance.printCustom(struk, PdfTextAlign.left); 
       await _instance.disconnect();
       
       return true;
