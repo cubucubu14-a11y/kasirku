@@ -164,7 +164,7 @@ jobs:
                         ),
                         SizedBox(height: 10),
                         Text(
-                          'Signed Build Test',
+                          'Update Berhasil!',
                           style: TextStyle(fontSize: 16, color: Colors.grey),
                         ),
                       ],
@@ -185,22 +185,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
+             build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kasirku-apk-signed
-          path: build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
+          path: build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.0.2-signed
-          name: "Kasirku v0.0.2 - Signed Test"
-          body: "Build test kedua. APK sudah ditandatangani dengan keystore asli. Update tanpa uninstall siap diuji."
-          files: build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
+          tag_name: v0.0.3-test
+          name: "Kasirku v0.0.3 - Update Test"
+          body: "Build test ketiga. Uji coba fitur update tanpa uninstall."
+          files: build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
           draft: false
           prerelease: true
         env:
