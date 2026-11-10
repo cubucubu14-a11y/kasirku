@@ -139,6 +139,21 @@ jobs:
           dependencies {}
           EOF
 
+      - name: Fix Namespace Library (Patch)
+        run: |
+          # Cari folder library bluetooth_serial di cache pub
+          PUB_CACHE=$(flutter pub cache list | grep -o '/root/.pub-cache' | head -1)
+          if [ -z "$PUB_CACHE" ]; then PUB_CACHE="/home/runner/.pub-cache"; fi
+          
+          # Cari file build.gradle milik flutter_bluetooth_serial
+          GRADLE_FILE=$(find $PUB_CACHE -path "*flutter_bluetooth_serial*/android/build.gradle" | head -1)
+          
+          if [ -n "$GRADLE_FILE" ]; then
+            echo "Menambal file: $GRADLE_FILE"
+            # Tambahkan namespace ke dalam blok android { ... }
+            sed -i '/android {/a \    namespace "io.github.edufolly.flutterbluetoothserial"' "$GRADLE_FILE"
+          fi
+
       - name: Flutter pub get
         run: flutter pub get
 
@@ -148,22 +163,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
+             build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-full
-          path: build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
+          name: kasirku-apk-stable
+          path: build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0.0-full
-          name: "Kasirku v3.0.0 - Full Stable"
-          body: "Rilis stabil. Menggunakan library printer Bluetooth Serial."
-          files: build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
+          tag_name: v3.1.0-stable
+          name: "Kasirku v3.1.0 - Stable Release"
+          body: "Rilis stabil dengan library printer esc_pos_utils_plus."
+          files: build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
           draft: false
           prerelease: false
         env:
