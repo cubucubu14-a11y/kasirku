@@ -50,31 +50,85 @@ jobs:
 
       - name: Konfigurasi Signing Gradle
         run: |
-          # Tambahkan konfigurasi keystore ke build.gradle
-          sed -i '/def flutterVersionName/a \
-          def keystoreProperties = new Properties()\
-          def keystorePropertiesFile = rootProject.file('"'"'key.properties'"'"')\
-          if (keystorePropertiesFile.exists()) {\
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
-          }' android/app/build.gradle
+          cat > android/app/build.gradle << 'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
 
-          # Tambahkan signingConfigs dan ganti buildTypes
-          sed -i '/android {/a \
-              signingConfigs {\
-                  release {\
-                      keyAlias keystoreProperties['"'"'keyAlias'"'"']\
-                      keyPassword keystoreProperties['"'"'keyPassword'"'"']\
-                      storeFile keystoreProperties['"'"'storeFile'"'"'] ? file(keystoreProperties['"'"'storeFile'"'"']) : null\
-                      storePassword keystoreProperties['"'"'storePassword'"'"']\
-                  }\
-              }' android/app/build.gradle
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
 
-          sed -i '/buildTypes {/,/}/c\
-              buildTypes {\
-                  release {\
-                      signingConfig signingConfigs.release\
-                  }\
-              }' android/app/build.gradle
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          android {
+              namespace = "com.kasirku.kasirku"
+              compileSdk = flutter.compileSdkVersion
+              ndkVersion = flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_1_8
+                  targetCompatibility = JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = JavaVersion.VERSION_1_8
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId = "com.kasirku.kasirku"
+                  minSdk = flutter.minSdkVersion
+                  targetSdk = flutter.targetSdkVersion
+                  versionCode = flutterVersionCode.toInteger()
+                  versionName = flutterVersionName
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias = keystoreProperties['keyAlias']
+                      keyPassword = keystoreProperties['keyPassword']
+                      storeFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storePassword = keystoreProperties['storePassword']
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig = signingConfigs.release
+                  }
+              }
+          }
+
+          flutter {
+              source = '../..'
+          }
+
+          dependencies {}
+          EOF
 
       - name: Override main.dart dengan Hello World
         run: |
