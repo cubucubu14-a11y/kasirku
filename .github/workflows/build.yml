@@ -138,22 +138,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
+             build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-ui
-          path: build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
+          name: kasirku-apk-keranjang
+          path: build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-ui
-          name: "Kasirku v1.0.0 - UI Test"
-          body: "Build UI pertama. Halaman setup dan kasir dasar."
-          files: build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
+          tag_name: v1.1.0-keranjang
+          name: "Kasirku v1.1.0 - Fitur Keranjang"
+          body: "Update fitur keranjang belanja dan kalkulasi total otomatis."
+          files: build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
           draft: false
           prerelease: true
         env:
