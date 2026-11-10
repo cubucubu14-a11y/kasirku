@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/printer_service.dart';
 import '../services/database_helper.dart';
-import 'package:flutter_thermal_printer/utils/printer.dart';
 import 'setup_screen.dart';
 
 class KasirScreen extends StatefulWidget {
@@ -20,7 +20,7 @@ class _KasirScreenState extends State<KasirScreen> {
   String _namaKasir = '';
   String _namaCabang = '';
   String _urlAppScript = '';
-  Printer? _selectedPrinter;
+  BluetoothDevice? _selectedPrinter;
   int _pendingCount = 0;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
@@ -106,11 +106,13 @@ class _KasirScreenState extends State<KasirScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Pilih Printer Bluetooth'),
-        content: FutureBuilder<List<Printer>>(
+        content: FutureBuilder<List<BluetoothDevice>>(
           future: PrinterService.getPrinters(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) return const CircularProgressIndicator();
-            if (snapshot.data!.isEmpty) return const Text('Tidak ada printer. Pastikan pairing di setting HP.');
+            if (snapshot.data!.isEmpty) {
+              return const Text('Tidak ada printer ditemukan. Pastikan sudah pairing di setting Bluetooth HP.');
+            }
             
             return SizedBox(
               width: double.maxFinite,
@@ -120,8 +122,8 @@ class _KasirScreenState extends State<KasirScreen> {
                 itemBuilder: (context, index) {
                   final printer = snapshot.data![index];
                   return ListTile(
-                    title: Text(printer.name ?? 'Printer'),
-                    trailing: _selectedPrinter?.name == printer.name ? const Icon(Icons.check, color: Colors.green) : null,
+                    title: Text(printer.name ?? 'Printer Tanpa Nama'),
+                    trailing: _selectedPrinter?.address == printer.address ? const Icon(Icons.check, color: Colors.green) : null,
                     onTap: () {
                       setState(() => _selectedPrinter = printer);
                       Navigator.pop(context);
@@ -159,7 +161,6 @@ class _KasirScreenState extends State<KasirScreen> {
     if (_keranjang.isEmpty) return;
     setState(() => _isLoading = true);
 
-    final now = DateTime.now();
     final dataTransaksi = {
       "nama_cabang": _namaCabang,
       "nama_kasir": _namaKasir,
@@ -297,7 +298,7 @@ class _KasirScreenState extends State<KasirScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('TOTAL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text(_currencyFormat.format(_totalBelanja), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                          Text(_currencyFormat.format(_totalBelanja), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
                         ],
                       ),
                       const SizedBox(height: 16),
