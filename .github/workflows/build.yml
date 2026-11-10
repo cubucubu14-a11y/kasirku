@@ -93,7 +93,7 @@ jobs:
           android {
               namespace = "com.kasirku.kasirku"
               compileSdk = flutter.compileSdkVersion
-              ndkVersion = flutter.ndkVersion
+              ndkVersion = "27.0.12077973"
 
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_1_8
@@ -148,22 +148,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v2.2.0-offline.apk
+             build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-offline
-          path: build/app/outputs/flutter-apk/kasirku-v2.2.0-offline.apk
+          name: kasirku-apk-fix
+          path: build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.2.0-offline
-          name: "Kasirku v2.2.0 - Offline First"
-          body: "Pembaruan: Perbaikan versi Flutter untuk mendukung library Printer."
-          files: build/app/outputs/flutter-apk/kasirku-v2.2.0-offline.apk
+          tag_name: v2.3.0-fix
+          name: "Kasirku v2.3.0 - Fix Printer"
+          body: "Perbaikan konfigurasi library printer dan Android NDK."
+          files: build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
           draft: false
           prerelease: false
         env:
