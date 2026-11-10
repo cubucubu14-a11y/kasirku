@@ -1,29 +1,32 @@
-import 'package:flutter_thermal_printer/flutter_thermal_printer.dart';
-import 'package:flutter_thermal_printer/utils/printer.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:intl/intl.dart';
 
 class PrinterService {
-  static final FlutterThermalPrinter _instance = FlutterThermalPrinter.instance;
-
-  // Fungsi untuk mencari printer Bluetooth
-  static Future<List<Printer>> getPrinters() async {
+  // Fungsi untuk mencari printer Bluetooth yang sudah di-pairing
+  static Future<List<BluetoothDevice>> getPrinters() async {
     try {
-      // Hapus filter ConnectionType agar semua printer yang terdeteksi bisa dipilih
-      List<Printer> printers = await _instance.getPrinters();
-      return printers;
+      List<BluetoothDevice> bondedDevices = await FlutterBluetoothSerial.instance.getBondedDevices();
+      return bondedDevices;
     } catch (e) {
       return [];
     }
   }
 
   // Fungsi untuk mencetak struk
-  static Future<bool> cetakStruk(Printer printer, String cabang, String kasir, List<Map<String, dynamic>> items, int total) async {
+  static Future<bool> cetakStruk(BluetoothDevice printer, String cabang, String kasir, List<Map<String, dynamic>> items, int total) async {
+    BluetoothConnection? connection;
     try {
+      // 1. Hubungkan ke Printer
+      connection = await BluetoothConnection.toAddress(printer.address);
+      
       final now = DateTime.now();
       final formatter = DateFormat('dd/MM/yyyy HH:mm');
       final currency = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
-      // Format teks struk 58mm (32 karakter per baris)
+      // Perintah ESC/POS untuk inisialisasi printer
+      List<int> bytes = [27, 64]; 
+
+      // 2. Susun teks struk
       String struk = "";
       struk += "        $cabang\n";
       struk += "--------------------------------\n";
@@ -40,7 +43,6 @@ class PrinterService {
         String qtyStr = qty.toString();
         String hargaStr = currency.format(harga);
         
-        // Padding agar rata kanan
         int spasi = 32 - (nama.length + qtyStr.length + hargaStr.length);
         if (spasi < 1) spasi = 1;
         
@@ -54,18 +56,27 @@ class PrinterService {
       struk += "--------------------------------\n";
       struk += "      Terima Kasih :)\n\n\n\n";
 
-      // KONEKSI & CETAK MENGGUNAKAN FUNGSI DASAR
-      await _instance.connect(printer);
+      // 3. Kirim teks ke printer (diubah ke bytes)
+      bytes.addAll(struk.codeUnits);
       
-      // Kirim teks mentah ke printer
-      await _instance.printText(struk); 
+      // 4. Perintah potong kertas (jika printer support)
+      bytes.addAll([27, 100, 4]); // Feed 4 lines
+      // bytes.addAll([29, 86, 65, 0]); // Auto cut (buka komentar jika printer punya auto-cutter)
+
+      // Eksekusi cetak
+      connection.output.add(Uint8List.fromList(bytes));
+      await connection.output.allSent;
       
-      await _instance.disconnect();
+      // 5. Tutup koneksi
+      await connection.close();
+      connection = null;
       
       return true;
     } catch (e) {
-      // Jika library masih error, kita tangkap errornya agar aplikasi tidak crash
-      print("Error cetak: $e");
+      print("Error cetak bluetooth: $e");
+      if (connection != null) {
+        await connection.close();
+      }
       return false;
     }
   }
