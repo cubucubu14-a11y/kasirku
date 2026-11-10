@@ -37,7 +37,7 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/kasirku.jks
+          echo "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 --decode > android/app/kasirku.jks
 
       - name: Buat key.properties
         run: |
@@ -48,92 +48,33 @@ jobs:
           storeFile=kasirku.jks
           EOF
 
-      - name: Override build.gradle untuk Signing
+      - name: Konfigurasi Signing Gradle
         run: |
-          cat > android/app/build.gradle << 'EOF'
-          def localProperties = new Properties()
-          def localPropertiesFile = rootProject.file('local.properties')
-          if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader('UTF-8') { reader ->
-                  localProperties.load(reader)
-              }
-          }
+          # Tambahkan konfigurasi keystore ke build.gradle
+          sed -i '/def flutterVersionName/a \
+          def keystoreProperties = new Properties()\
+          def keystorePropertiesFile = rootProject.file('"'"'key.properties'"'"')\
+          if (keystorePropertiesFile.exists()) {\
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
+          }' android/app/build.gradle
 
-          def flutterRoot = localProperties.getProperty('flutter.sdk')
-          if (flutterRoot == null) {
-              throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
-          }
+          # Tambahkan signingConfigs dan ganti buildTypes
+          sed -i '/android {/a \
+              signingConfigs {\
+                  release {\
+                      keyAlias keystoreProperties['"'"'keyAlias'"'"']\
+                      keyPassword keystoreProperties['"'"'keyPassword'"'"']\
+                      storeFile keystoreProperties['"'"'storeFile'"'"'] ? file(keystoreProperties['"'"'storeFile'"'"']) : null\
+                      storePassword keystoreProperties['"'"'storePassword'"'"']\
+                  }\
+              }' android/app/build.gradle
 
-          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-          if (flutterVersionCode == null) {
-              flutterVersionCode = '1'
-          }
-
-          def flutterVersionName = localProperties.getProperty('flutter.versionName')
-          if (flutterVersionName == null) {
-              flutterVersionName = '1.0'
-          }
-
-          apply plugin: 'com.android.application'
-          apply plugin: 'kotlin-android'
-          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-
-          def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file('key.properties')
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-          }
-
-          android {
-              namespace "com.kasirku.kasirku"
-              compileSdkVersion flutter.compileSdkVersion
-              ndkVersion flutter.ndkVersion
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
-
-              kotlinOptions {
-                  jvmTarget = '1.8'
-              }
-
-              sourceSets {
-                  main.java.srcDirs += 'src/main/kotlin'
-              }
-
-              defaultConfig {
-                  applicationId "com.kasirku.kasirku"
-                  minSdkVersion flutter.minSdkVersion
-                  targetSdkVersion flutter.targetSdkVersion
-                  versionCode flutterVersionCode.toInteger()
-                  versionName flutterVersionName
-              }
-
-              signingConfigs {
-                  release {
-                      keyAlias keystoreProperties['keyAlias']
-                      keyPassword keystoreProperties['keyPassword']
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                      storePassword keystoreProperties['storePassword']
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-
-          flutter {
-              source '../..'
-          }
-
-          dependencies {
-              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-          }
-          EOF
+          sed -i '/buildTypes {/,/}/c\
+              buildTypes {\
+                  release {\
+                      signingConfig signingConfigs.release\
+                  }\
+              }' android/app/build.gradle
 
       - name: Override main.dart dengan Hello World
         run: |
