@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/printer_service.dart';
@@ -20,7 +18,6 @@ class _KasirScreenState extends State<KasirScreen> {
   String _namaKasir = '';
   String _namaCabang = '';
   String _urlAppScript = '';
-  BluetoothDevice? _selectedPrinter;
   int _pendingCount = 0;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
@@ -38,16 +35,6 @@ class _KasirScreenState extends State<KasirScreen> {
   void initState() {
     super.initState();
     _loadData();
-    _requestPermissions();
-  }
-
-  Future<void> _requestPermissions() async {
-    await [
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      Permission.location,
-    ].request();
   }
 
   Future<void> _loadData() async {
@@ -60,7 +47,6 @@ class _KasirScreenState extends State<KasirScreen> {
     _updatePendingCount();
   }
 
-  // Cek berapa transaksi yang belum tersinkronisasi
   Future<void> _updatePendingCount() async {
     final antrean = await DatabaseHelper.instance.getAntrean();
     setState(() {
@@ -68,7 +54,6 @@ class _KasirScreenState extends State<KasirScreen> {
     });
   }
 
-  // Fungsi Sinkronisasi Manual/Auto
   Future<void> _sinkronisasiData() async {
     if (_urlAppScript.isEmpty) return;
     
@@ -101,43 +86,6 @@ class _KasirScreenState extends State<KasirScreen> {
     }
   }
 
-  Future<void> _pilihPrinter() async {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Pilih Printer Bluetooth'),
-        content: FutureBuilder<List<BluetoothDevice>>(
-          future: PrinterService.getPrinters(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const CircularProgressIndicator();
-            if (snapshot.data!.isEmpty) {
-              return const Text('Tidak ada printer ditemukan. Pastikan sudah pairing di setting Bluetooth HP.');
-            }
-            
-            return SizedBox(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: snapshot.data!.length,
-                itemBuilder: (context, index) {
-                  final printer = snapshot.data![index];
-                  return ListTile(
-                    title: Text(printer.name ?? 'Printer Tanpa Nama'),
-                    trailing: _selectedPrinter?.address == printer.address ? const Icon(Icons.check, color: Colors.green) : null,
-                    onTap: () {
-                      setState(() => _selectedPrinter = printer);
-                      Navigator.pop(context);
-                    },
-                  );
-                },
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   void _tambahKeKeranjang(Map<String, dynamic> produk) {
     setState(() {
       int index = _keranjang.indexWhere((item) => item['id'] == produk['id']);
@@ -167,16 +115,12 @@ class _KasirScreenState extends State<KasirScreen> {
       "items": _keranjang,
     };
 
-    // 1. SELALU SIMPAN KE DATABASE LOKAL DULU (ANTREAN)
     await DatabaseHelper.instance.simpanAntrean(dataTransaksi);
     await _updatePendingCount();
 
-    // 2. Cetak Struk jika printer dipilih
-    if (_selectedPrinter != null) {
-      await PrinterService.cetakStruk(_selectedPrinter!, _namaCabang, _namaKasir, _keranjang, _totalBelanja);
-    }
+    // Panggil fungsi printer (simulasi)
+    await PrinterService.cetakStruk(_namaCabang, _namaKasir, _keranjang, _totalBelanja);
 
-    // 3. Coba Sinkronisasi Otomatis (jika ada internet)
     await _sinkronisasiData();
 
     if (!mounted) return;
@@ -184,7 +128,7 @@ class _KasirScreenState extends State<KasirScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Transaksi Disimpan'),
-        content: Text('Total: ${_currencyFormat.format(_totalBelanja)}\nData tersimpan di HP. Sinkronisasi otomatis berjalan.'),
+        content: Text('Total: ${_currencyFormat.format(_totalBelanja)}\nData tersimpan di HP. Struk berhasil dicetak (simulasi).'),
         actions: [
           TextButton(
             onPressed: () {
@@ -211,7 +155,6 @@ class _KasirScreenState extends State<KasirScreen> {
           ],
         ),
         actions: [
-          // Tombol Sinkronisasi
           Stack(
             children: [
               IconButton(
@@ -231,7 +174,6 @@ class _KasirScreenState extends State<KasirScreen> {
                 )
             ],
           ),
-          IconButton(icon: const Icon(Icons.print), onPressed: _pilihPrinter, tooltip: 'Pilih Printer'),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -298,7 +240,7 @@ class _KasirScreenState extends State<KasirScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('TOTAL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text(_currencyFormat.format(_totalBelanja), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                          Text(_currencyFormat.format(_totalBelanja), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -310,7 +252,7 @@ class _KasirScreenState extends State<KasirScreen> {
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                           child: _isLoading 
                               ? const CircularProgressIndicator(color: Colors.white)
-                              : const Text('BAYAR & CETAK', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              : const Text('BAYAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       )
                     ],
