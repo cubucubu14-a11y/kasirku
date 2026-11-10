@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_service.dart';
 import 'kasir_screen.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -17,19 +16,17 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _isLoading = false;
 
   Future<void> _simpanPengaturan() async {
-    if (_urlController.text.isEmpty || _kasirController.text.isEmpty || _cabangController.text.isEmpty) {
+    // Hanya Nama Kasir dan Cabang yang WAJIB diisi
+    if (_kasirController.text.isEmpty || _cabangController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Semua kolom harus diisi!')),
+        const SnackBar(content: Text('Nama Kasir dan Cabang harus diisi!')),
       );
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // Panggil API untuk buat tab sheet baru
-    bool success = await ApiService.setupCabang(_urlController.text.trim(), _cabangController.text.trim());
-
-    if (success) {
+    try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('url_appscript', _urlController.text.trim());
       await prefs.setString('nama_kasir', _kasirController.text.trim());
@@ -40,13 +37,13 @@ class _SetupScreenState extends State<SetupScreen> {
         context,
         MaterialPageRoute(builder: (context) => const KasirScreen()),
       );
-    } else {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gagal terhubung ke Apps Script. Cek URL!')),
+        SnackBar(content: Text('Error: $e')),
       );
+    } finally {
+      setState(() => _isLoading = false);
     }
-    
-    setState(() => _isLoading = false);
   }
 
   @override
@@ -62,23 +59,39 @@ class _SetupScreenState extends State<SetupScreen> {
             const SizedBox(height: 20),
             TextField(
               controller: _kasirController,
-              decoration: const InputDecoration(labelText: 'Nama Kasir', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Nama Kasir',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _cabangController,
-              decoration: const InputDecoration(labelText: 'Nama Cabang', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Nama Cabang',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.storefront),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _urlController,
-              decoration: const InputDecoration(labelText: 'URL Apps Script', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'URL Apps Script (Opsional)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _simpanPengaturan,
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Simpan & Mulai Kasir'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Simpan & Mulai Kasir', style: TextStyle(fontSize: 16)),
             ),
           ],
         ),
