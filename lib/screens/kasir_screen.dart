@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/printer_service.dart';
+import '../services/database_helper.dart';
 import 'package:flutter_thermal_printer/utils/printer.dart';
 import 'setup_screen.dart';
 
@@ -19,6 +21,7 @@ class _KasirScreenState extends State<KasirScreen> {
   String _namaCabang = '';
   String _urlAppScript = '';
   Printer? _selectedPrinter;
+  int _pendingCount = 0;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
   final List<Map<String, dynamic>> _produkList = [
@@ -54,6 +57,48 @@ class _KasirScreenState extends State<KasirScreen> {
       _namaCabang = prefs.getString('nama_cabang') ?? '';
       _urlAppScript = prefs.getString('url_appscript') ?? '';
     });
+    _updatePendingCount();
+  }
+
+  // Cek berapa transaksi yang belum tersinkronisasi
+  Future<void> _updatePendingCount() async {
+    final antrean = await DatabaseHelper.instance.getAntrean();
+    setState(() {
+      _pendingCount = antrean.length;
+    });
+  }
+
+  // Fungsi Sinkronisasi Manual/Auto
+  Future<void> _sinkronisasiData() async {
+    if (_urlAppScript.isEmpty) return;
+    
+    setState(() => _isLoading = true);
+    final antrean = await DatabaseHelper.instance.getAntrean();
+    int berhasil = 0;
+
+    for (var item in antrean) {
+      final data = jsonDecode(item['data_json']);
+      bool sukses = await ApiService.kirimTransaksi(
+        _urlAppScript,
+        data['nama_cabang'],
+        data['nama_kasir'],
+        List<Map<String, dynamic>>.from(data['items']),
+      );
+
+      if (sukses) {
+        await DatabaseHelper.instance.hapusAntrean(item['id']);
+        berhasil++;
+      }
+    }
+
+    await _updatePendingCount();
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sinkronisasi selesai. $berhasil data terkirim ke Spreadsheet.')),
+      );
+    }
   }
 
   Future<void> _pilihPrinter() async {
@@ -65,7 +110,7 @@ class _KasirScreenState extends State<KasirScreen> {
           future: PrinterService.getPrinters(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) return const CircularProgressIndicator();
-            if (snapshot.data!.isEmpty) return const Text('Tidak ada printer ditemukan. Pastikan sudah pairing di setting HP.');
+            if (snapshot.data!.isEmpty) return const Text('Tidak ada printer. Pastikan pairing di setting HP.');
             
             return SizedBox(
               width: double.maxFinite,
@@ -75,7 +120,7 @@ class _KasirScreenState extends State<KasirScreen> {
                 itemBuilder: (context, index) {
                   final printer = snapshot.data![index];
                   return ListTile(
-                    title: Text(printer.name ?? 'Printer Tanpa Nama'),
+                    title: Text(printer.name ?? 'Printer'),
                     trailing: _selectedPrinter?.name == printer.name ? const Icon(Icons.check, color: Colors.green) : null,
                     onTap: () {
                       setState(() => _selectedPrinter = printer);
@@ -114,35 +159,42 @@ class _KasirScreenState extends State<KasirScreen> {
     if (_keranjang.isEmpty) return;
     setState(() => _isLoading = true);
 
-    // 1. Simpan ke Google Spreadsheet
-    bool suksesSimpan = await ApiService.kirimTransaksi(_urlAppScript, _namaCabang, _namaKasir, _keranjang);
+    final now = DateTime.now();
+    final dataTransaksi = {
+      "nama_cabang": _namaCabang,
+      "nama_kasir": _namaKasir,
+      "items": _keranjang,
+    };
 
-    if (suksesSimpan) {
-      // 2. Cetak Struk jika printer sudah dipilih
-      if (_selectedPrinter != null) {
-        await PrinterService.cetakStruk(_selectedPrinter!, _namaCabang, _namaKasir, _keranjang, _totalBelanja);
-      }
+    // 1. SELALU SIMPAN KE DATABASE LOKAL DULU (ANTREAN)
+    await DatabaseHelper.instance.simpanAntrean(dataTransaksi);
+    await _updatePendingCount();
 
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Transaksi Berhasil'),
-          content: Text('Total: ${_currencyFormat.format(_totalBelanja)}\nData tersimpan di Spreadsheet.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() => _keranjang.clear());
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menyimpan ke database!')));
+    // 2. Cetak Struk jika printer dipilih
+    if (_selectedPrinter != null) {
+      await PrinterService.cetakStruk(_selectedPrinter!, _namaCabang, _namaKasir, _keranjang, _totalBelanja);
     }
+
+    // 3. Coba Sinkronisasi Otomatis (jika ada internet)
+    await _sinkronisasiData();
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Transaksi Disimpan'),
+        content: Text('Total: ${_currencyFormat.format(_totalBelanja)}\nData tersimpan di HP. Sinkronisasi otomatis berjalan.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() => _keranjang.clear());
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
     setState(() => _isLoading = false);
   }
 
@@ -158,6 +210,26 @@ class _KasirScreenState extends State<KasirScreen> {
           ],
         ),
         actions: [
+          // Tombol Sinkronisasi
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.sync),
+                onPressed: _isLoading ? null : _sinkronisasiData,
+                tooltip: 'Sinkronisasi Data',
+              ),
+              if (_pendingCount > 0)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                    child: Text('$_pendingCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                )
+            ],
+          ),
           IconButton(icon: const Icon(Icons.print), onPressed: _pilihPrinter, tooltip: 'Pilih Printer'),
           IconButton(
             icon: const Icon(Icons.logout),
