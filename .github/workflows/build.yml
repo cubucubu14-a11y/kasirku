@@ -33,6 +33,108 @@ jobs:
           cp -r temp_app/pubspec.yaml .
           rm -rf temp_app
 
+      - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/kasirku.jks
+
+      - name: Buat key.properties
+        run: |
+          cat > android/key.properties << 'EOF'
+          storePassword=kasirku123
+          keyPassword=kasirku123
+          keyAlias=kasirku
+          storeFile=kasirku.jks
+          EOF
+
+      - name: Override build.gradle untuk Signing
+        run: |
+          cat > android/app/build.gradle << 'EOF'
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterRoot = localProperties.getProperty('flutter.sdk')
+          if (flutterRoot == null) {
+              throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          apply plugin: 'com.android.application'
+          apply plugin: 'kotlin-android'
+          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          android {
+              namespace "com.kasirku.kasirku"
+              compileSdkVersion flutter.compileSdkVersion
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.kasirku.kasirku"
+                  minSdkVersion flutter.minSdkVersion
+                  targetSdkVersion flutter.targetSdkVersion
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+
+          dependencies {
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+          }
+          EOF
+
       - name: Override main.dart dengan Hello World
         run: |
           mkdir -p lib
@@ -67,7 +169,7 @@ jobs:
                         ),
                         SizedBox(height: 10),
                         Text(
-                          'Hello World - Build Test',
+                          'Signed Build Test',
                           style: TextStyle(fontSize: 16, color: Colors.grey),
                         ),
                       ],
@@ -82,28 +184,28 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build APK (Signed)
         run: flutter build apk --release --no-shrink
 
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v0.0.1-test.apk
+             build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-test
-          path: build/app/outputs/flutter-apk/kasirku-v0.0.1-test.apk
+          name: kasirku-apk-signed
+          path: build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.0.1-test
-          name: "Kasirku v0.0.1 - Hello World Test"
-          body: "Build test pertama. APK Hello World untuk memastikan alur GitHub Actions jalan."
-          files: build/app/outputs/flutter-apk/kasirku-v0.0.1-test.apk
+          tag_name: v0.0.2-signed
+          name: "Kasirku v0.0.2 - Signed Test"
+          body: "Build test kedua. APK sudah ditandatangani dengan keystore asli. Update tanpa uninstall siap diuji."
+          files: build/app/outputs/flutter-apk/kasirku-v0.0.2-signed.apk
           draft: false
           prerelease: true
         env:
