@@ -32,16 +32,6 @@ jobs:
           cp -r temp_app/android .
           rm -rf temp_app
 
-      - name: Inject Bluetooth Permissions
-        run: |
-          sed -i '/<application/i \
-              <uses-permission android:name="android.permission.INTERNET"/>\
-              <uses-permission android:name="android.permission.BLUETOOTH"/>\
-              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\
-              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\
-              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' android/app/src/main/AndroidManifest.xml
-
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -57,7 +47,7 @@ jobs:
           storeFile=kasirku.jks
           EOF
 
-      - name: Konfigurasi Signing & MinSdk Gradle
+      - name: Konfigurasi Signing Gradle
         run: |
           cat > android/app/build.gradle << 'EOF'
           plugins {
@@ -93,7 +83,6 @@ jobs:
           android {
               namespace = "com.kasirku.kasirku"
               compileSdk = flutter.compileSdkVersion
-              ndkVersion = "27.0.12077973"
 
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_1_8
@@ -102,10 +91,6 @@ jobs:
 
               kotlinOptions {
                   jvmTarget = JavaVersion.VERSION_1_8
-              }
-
-              sourceSets {
-                  main.java.srcDirs += 'src/main/kotlin'
               }
 
               defaultConfig {
@@ -139,21 +124,6 @@ jobs:
           dependencies {}
           EOF
 
-      - name: Fix Namespace Library (Patch)
-        run: |
-          # Cari folder library bluetooth_serial di cache pub
-          PUB_CACHE=$(flutter pub cache list | grep -o '/root/.pub-cache' | head -1)
-          if [ -z "$PUB_CACHE" ]; then PUB_CACHE="/home/runner/.pub-cache"; fi
-          
-          # Cari file build.gradle milik flutter_bluetooth_serial
-          GRADLE_FILE=$(find $PUB_CACHE -path "*flutter_bluetooth_serial*/android/build.gradle" | head -1)
-          
-          if [ -n "$GRADLE_FILE" ]; then
-            echo "Menambal file: $GRADLE_FILE"
-            # Tambahkan namespace ke dalam blok android { ... }
-            sed -i '/android {/a \    namespace "io.github.edufolly.flutterbluetoothserial"' "$GRADLE_FILE"
-          fi
-
       - name: Flutter pub get
         run: flutter pub get
 
@@ -163,22 +133,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
+             build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-stable
-          path: build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
+          name: kasirku-apk-final
+          path: build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.1.0-stable
-          name: "Kasirku v3.1.0 - Stable Release"
-          body: "Rilis stabil dengan library printer esc_pos_utils_plus."
-          files: build/app/outputs/flutter-apk/kasirku-v3.1.0-stable.apk
+          tag_name: v3.2.0-final
+          name: "Kasirku v3.2.0 - Final UI (Simulasi Print)"
+          body: "Rilis final aplikasi kasir. Fitur sinkronisasi offline sudah berjalan. Printer disimulasikan."
+          files: build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
           draft: false
           prerelease: false
         env:
