@@ -26,11 +26,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Generate Flutter project
+      - name: Generate Flutter project (Android folder)
         run: |
           flutter create --org com.kasirku --project-name kasirku temp_app
           cp -r temp_app/android .
-          cp -r temp_app/pubspec.yaml .
           rm -rf temp_app
 
       - name: Decode Keystore
@@ -130,52 +129,6 @@ jobs:
           dependencies {}
           EOF
 
-      - name: Override main.dart dengan Hello World
-        run: |
-          mkdir -p lib
-          cat > lib/main.dart << 'EOF'
-          import 'package:flutter/material.dart';
-
-          void main() {
-            runApp(const MyApp());
-          }
-
-          class MyApp extends StatelessWidget {
-            const MyApp({super.key});
-
-            @override
-            Widget build(BuildContext context) {
-              return MaterialApp(
-                title: 'Kasirku',
-                theme: ThemeData(primarySwatch: Colors.blue),
-                home: const Scaffold(
-                  body: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.store, size: 80, color: Colors.blue),
-                        SizedBox(height: 20),
-                        Text(
-                          'Kasirku',
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Update Berhasil!',
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
-          EOF
-
       - name: Flutter pub get
         run: flutter pub get
 
@@ -185,22 +138,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
+             build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-signed
-          path: build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
+          name: kasirku-apk-ui
+          path: build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.0.3-test
-          name: "Kasirku v0.0.3 - Update Test"
-          body: "Build test ketiga. Uji coba fitur update tanpa uninstall."
-          files: build/app/outputs/flutter-apk/kasirku-v0.0.3-test.apk
+          tag_name: v1.0.0-ui
+          name: "Kasirku v1.0.0 - UI Test"
+          body: "Build UI pertama. Halaman setup dan kasir dasar."
+          files: build/app/outputs/flutter-apk/kasirku-v1.0.0-ui.apk
           draft: false
           prerelease: true
         env:
