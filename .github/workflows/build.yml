@@ -34,7 +34,6 @@ jobs:
 
       - name: Inject Bluetooth Permissions
         run: |
-          # Tambahkan izin Bluetooth & Internet ke AndroidManifest
           sed -i '/<application/i \
               <uses-permission android:name="android.permission.INTERNET"/>\
               <uses-permission android:name="android.permission.BLUETOOTH"/>\
@@ -149,22 +148,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
+             build/app/outputs/flutter-apk/kasirku-v2.1.0-offline.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-full
-          path: build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
+          name: kasirku-apk-offline
+          path: build/app/outputs/flutter-apk/kasirku-v2.1.0-offline.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0-full
-          name: "Kasirku v2.0.0 - Full Version"
-          body: "Rilis lengkap: Keranjang, Database Spreadsheet, dan Printer Bluetooth 58mm."
-          files: build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
+          tag_name: v2.1.0-offline
+          name: "Kasirku v2.1.0 - Offline First"
+          body: "Pembaruan: Aplikasi bisa menyimpan transaksi tanpa internet. Sinkronisasi otomatis saat internet tersedia."
+          files: build/app/outputs/flutter-apk/kasirku-v2.1.0-offline.apk
           draft: false
           prerelease: false
         env:
