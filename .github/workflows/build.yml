@@ -148,22 +148,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
+             build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-fix
-          path: build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
+          name: kasirku-apk-full
+          path: build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.3.0-fix
-          name: "Kasirku v2.3.0 - Fix Printer"
-          body: "Perbaikan konfigurasi library printer dan Android NDK."
-          files: build/app/outputs/flutter-apk/kasirku-v2.3.0-fix.apk
+          tag_name: v3.0.0-full
+          name: "Kasirku v3.0.0 - Full Stable"
+          body: "Rilis stabil. Menggunakan library printer Bluetooth Serial."
+          files: build/app/outputs/flutter-apk/kasirku-v3.0.0-full.apk
           draft: false
           prerelease: false
         env:
