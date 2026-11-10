@@ -32,6 +32,17 @@ jobs:
           cp -r temp_app/android .
           rm -rf temp_app
 
+      - name: Inject Bluetooth Permissions
+        run: |
+          # Tambahkan izin Bluetooth & Internet ke AndroidManifest
+          sed -i '/<application/i \
+              <uses-permission android:name="android.permission.INTERNET"/>\
+              <uses-permission android:name="android.permission.BLUETOOTH"/>\
+              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\
+              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\
+              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' android/app/src/main/AndroidManifest.xml
+
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -47,7 +58,7 @@ jobs:
           storeFile=kasirku.jks
           EOF
 
-      - name: Konfigurasi Signing Gradle
+      - name: Konfigurasi Signing & MinSdk Gradle
         run: |
           cat > android/app/build.gradle << 'EOF'
           plugins {
@@ -100,7 +111,7 @@ jobs:
 
               defaultConfig {
                   applicationId = "com.kasirku.kasirku"
-                  minSdk = flutter.minSdkVersion
+                  minSdk = 21
                   targetSdk = flutter.targetSdkVersion
                   versionCode = flutterVersionCode.toInteger()
                   versionName = flutterVersionName
@@ -133,28 +144,28 @@ jobs:
         run: flutter pub get
 
       - name: Build APK (Signed)
-        run: flutter build apk --release --no-shrink
+        run: flutter build apk --release
 
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
+             build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-keranjang
-          path: build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
+          name: kasirku-apk-full
+          path: build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0-keranjang
-          name: "Kasirku v1.1.0 - Fitur Keranjang"
-          body: "Update fitur keranjang belanja dan kalkulasi total otomatis."
-          files: build/app/outputs/flutter-apk/kasirku-v1.1.0-keranjang.apk
+          tag_name: v2.0.0-full
+          name: "Kasirku v2.0.0 - Full Version"
+          body: "Rilis lengkap: Keranjang, Database Spreadsheet, dan Printer Bluetooth 58mm."
+          files: build/app/outputs/flutter-apk/kasirku-v2.0.0-full.apk
           draft: false
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
