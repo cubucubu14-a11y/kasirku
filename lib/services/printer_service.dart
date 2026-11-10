@@ -5,12 +5,12 @@ import 'package:intl/intl.dart';
 class PrinterService {
   static final FlutterThermalPrinter _instance = FlutterThermalPrinter.instance;
 
-  // Fungsi untuk mencari printer Bluetooth yang sudah di-pairing di HP
+  // Fungsi untuk mencari printer Bluetooth
   static Future<List<Printer>> getPrinters() async {
     try {
-      // Tambahkan await dan perbaiki ConnectionType
+      // Hapus filter ConnectionType agar semua printer yang terdeteksi bisa dipilih
       List<Printer> printers = await _instance.getPrinters();
-      return printers.where((p) => p.connectionType == ConnectionType.BLUETOOTH).toList();
+      return printers;
     } catch (e) {
       return [];
     }
@@ -54,14 +54,18 @@ class PrinterService {
       struk += "--------------------------------\n";
       struk += "      Terima Kasih :)\n\n\n\n";
 
-      // Perintah cetak menggunakan API terbaru
+      // KONEKSI & CETAK MENGGUNAKAN FUNGSI DASAR
       await _instance.connect(printer);
-      // Ganti printText menjadi printCustom dengan ESC/POS text
-      await _instance.printCustom(struk, PdfTextAlign.left); 
+      
+      // Kirim teks mentah ke printer
+      await _instance.printText(struk); 
+      
       await _instance.disconnect();
       
       return true;
     } catch (e) {
+      // Jika library masih error, kita tangkap errornya agar aplikasi tidak crash
+      print("Error cetak: $e");
       return false;
     }
   }
