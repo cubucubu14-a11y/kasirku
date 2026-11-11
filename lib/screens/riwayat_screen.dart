@@ -140,4 +140,39 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                               if (!isVoid)
                                 IconButton(
                                   icon: const Icon(Icons.block, color: Colors.red),
-                                  tooltip: 'V
+                                  tooltip: 'Void Transaksi',
+                                  onPressed: () => _prosesVoid(trx['id_transaksi'], status.toString()),
+                                )
+                            ],
+                          ),
+                          onTap: () {
+                            final List items = jsonDecode(trx['items_json']);
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Detail Transaksi'),
+                                content: SizedBox(
+                                  width: double.maxFinite,
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: items.length,
+                                    itemBuilder: (context, i) {
+                                      final item = items[i];
+                                      return Text('${item['qty']}x ${item['nama']} - ${_currencyFormat.format(item['harga'])}');
+                                    },
+                                  ),
+                                ),
+                                actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup'))],
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
