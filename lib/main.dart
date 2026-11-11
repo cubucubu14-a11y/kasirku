@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/setup_screen.dart';
-import 'screens/kasir_screen.dart';
+import 'screens/main_navigation.dart';
 
 void main() {
   runApp(const MyApp());
@@ -16,8 +16,9 @@ class MyApp extends StatelessWidget {
       title: 'Kasirku',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFD32F2F)),
         useMaterial3: true,
+        fontFamily: 'Roboto',
       ),
       home: const SplashScreen(),
     );
@@ -40,33 +41,21 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkSetup() async {
     final prefs = await SharedPreferences.getInstance();
-    final urlAppScript = prefs.getString('url_appscript') ?? '';
-    final namaKasir = prefs.getString('nama_kasir') ?? '';
-    final namaCabang = prefs.getString('nama_cabang') ?? '';
+    final url = prefs.getString('url_appscript') ?? '';
+    final kasir = prefs.getString('nama_kasir') ?? '';
+    final cabang = prefs.getString('nama_cabang') ?? '';
 
     if (!mounted) return;
 
-    // Jika URL, Kasir, dan Cabang sudah pernah diisi, langsung masuk ke Kasir
-    if (urlAppScript.isNotEmpty && namaKasir.isNotEmpty && namaCabang.isNotEmpty) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const KasirScreen()),
-      );
+    if (kasir.isNotEmpty && cabang.isNotEmpty) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const MainNavigation()));
     } else {
-      // Jika belum, suruh isi form pengaturan dulu
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const SetupScreen()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SetupScreen()));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
