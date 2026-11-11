@@ -1,3 +1,4 @@
+import 'dart:convert'; // <--- INI YANG KURANG TADI
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
@@ -79,17 +80,15 @@ class _KasirScreenState extends State<KasirScreen> {
     final idTrx = "TRX-${now.millisecondsSinceEpoch}";
     final total = _totalBelanja;
 
-    // Simpan ke Database HP
     await DatabaseHelper.instance.simpanTransaksi({
       'id_transaksi': idTrx,
       'tanggal': tgl,
       'waktu': wkt,
       'total': total,
       'items_json': jsonEncode(_keranjang),
-      'status_sync': 0, // 0 = Belum sinkron
+      'status_sync': 0,
     });
 
-    // Coba kirim ke AppScript jika URL ada
     if (_urlAppScript.isNotEmpty) {
       bool sukses = await ApiService.kirimTransaksi(_urlAppScript, _namaCabang, _namaKasir, _keranjang);
       if (sukses) {
@@ -216,7 +215,6 @@ class _KasirScreenState extends State<KasirScreen> {
       ),
       body: Column(
         children: [
-          // Filter Kategori
           Container(
             height: 60,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -239,7 +237,6 @@ class _KasirScreenState extends State<KasirScreen> {
             ),
           ),
           
-          // Grid Produk
           Expanded(
             child: produkTampil.isEmpty
                 ? const Center(child: Text('Produk tidak ditemukan'))
