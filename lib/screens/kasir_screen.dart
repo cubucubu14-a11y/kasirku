@@ -1,9 +1,12 @@
-import 'dart:convert'; // <--- INI YANG KURANG TADI
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import '../services/api_service.dart';
 import '../services/database_helper.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/printer_service.dart';
 
 class KasirScreen extends StatefulWidget {
   const KasirScreen({super.key});
@@ -16,10 +19,10 @@ class _KasirScreenState extends State<KasirScreen> {
   String _namaKasir = '';
   String _namaCabang = '';
   String _urlAppScript = '';
-  
   List<Map<String, dynamic>> _produkList = [];
   final List<Map<String, dynamic>> _keranjang = [];
   String _kategoriAktif = 'Semua';
+  BluetoothDevice? _selectedPrinter;
   bool _isLoading = false;
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
@@ -70,59 +73,42 @@ class _KasirScreenState extends State<KasirScreen> {
     return total;
   }
 
-  Future<void> _prosesBayar() async {
-    if (_keranjang.isEmpty) return;
-    setState(() => _isLoading = true);
-
-    final now = DateTime.now();
-    final tgl = DateFormat('yyyy-MM-dd').format(now);
-    final wkt = DateFormat('HH:mm:ss').format(now);
-    final idTrx = "TRX-${now.millisecondsSinceEpoch}";
-    final total = _totalBelanja;
-
-    await DatabaseHelper.instance.simpanTransaksi({
-      'id_transaksi': idTrx,
-      'tanggal': tgl,
-      'waktu': wkt,
-      'total': total,
-      'items_json': jsonEncode(_keranjang),
-      'status_sync': 0,
-    });
-
-    if (_urlAppScript.isNotEmpty) {
-      bool sukses = await ApiService.kirimTransaksi(_urlAppScript, _namaCabang, _namaKasir, _keranjang);
-      if (sukses) {
-        await DatabaseHelper.instance.updateStatusSync(idTrx);
-      }
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _keranjang.clear();
-    });
-
+  Future<void> _pilihPrinter() async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Pembayaran Berhasil'),
-        content: Text('Total: ${_currencyFormat.format(total)}\nData tersimpan di HP.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
+        title: const Text('Pilih Printer Bluetooth'),
+        content: FutureBuilder<List<BluetoothDevice>>(
+          future: PrinterService.getPrinters(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const CircularProgressIndicator();
+            if (snapshot.data!.isEmpty) return const Text('Tidak ada printer. Pairing dulu di setting HP.');
+            return SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: snapshot.data!.length,
+                itemBuilder: (context, index) {
+                  final printer = snapshot.data![index];
+                  return ListTile(
+                    title: Text(printer.name ?? 'Printer'),
+                    trailing: _selectedPrinter?.address == printer.address ? const Icon(Icons.check, color: Colors.green) : null,
+                    onTap: () {
+                      setState(() => _selectedPrinter = printer);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
   void _bukaKeranjang() {
-    if (_keranjang.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keranjang masih kosong!')));
-      return;
-    }
-
+    if (_keranjang.isEmpty) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -147,7 +133,7 @@ class _KasirScreenState extends State<KasirScreen> {
                           color: Colors.grey[100],
                           child: ListTile(
                             leading: CircleAvatar(backgroundColor: const Color(0xFFD32F2F), foregroundColor: Colors.white, child: Text(item['qty'].toString())),
-                            title: Text(item['nama'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                            title: Text(item['nama']),
                             subtitle: Text(_currencyFormat.format(item['harga'] * item['qty'])),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -180,12 +166,12 @@ class _KasirScreenState extends State<KasirScreen> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : () {
+                      onPressed: () {
                         Navigator.pop(context);
-                        _prosesBayar();
+                        _showPembayaranDialog();
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F), foregroundColor: Colors.white),
-                      child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('BAYAR SEKARANG', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      child: const Text('PROSES BAYAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -195,6 +181,100 @@ class _KasirScreenState extends State<KasirScreen> {
         );
       },
     );
+  }
+
+  void _showPembayaranDialog() {
+    String metode = 'Tunai';
+    final bayarC = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            int bayar = int.tryParse(bayarC.text) ?? 0;
+            int kembali = bayar - _totalBelanja;
+            if (kembali < 0) kembali = 0;
+
+            return AlertDialog(
+              title: const Text('Pembayaran'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Total: ${_currencyFormat.format(_totalBelanja)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      ChoiceChip(label: const Text('Tunai'), selected: metode == 'Tunai', onSelected: (v) => setDialogState(() => metode = 'Tunai')),
+                      const SizedBox(width: 8),
+                      ChoiceChip(label: const Text('Kris/QRIS'), selected: metode == 'Kris', onSelected: (v) => setDialogState(() => metode = 'Kris')),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (metode == 'Tunai') ...[
+                    TextField(
+                      controller: bayarC,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Uang Diterima', border: OutlineInputBorder()),
+                      onChanged: (v) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Kembalian: ${_currencyFormat.format(kembali)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ] else ...[
+                    const Text('Pembayaran via Kris/QRIS diasumsikan Uang Pas.', style: TextStyle(fontStyle: FontStyle.italic)),
+                  ]
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : () async {
+                    int uangBayar = metode == 'Tunai' ? (int.tryParse(bayarC.text) ?? 0) : _totalBelanja;
+                    if (metode == 'Tunai' && uangBayar < _totalBelanja) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uang kurang!')));
+                      return;
+                    }
+                    Navigator.pop(context);
+                    await _prosesBayar(metode, uangBayar, kembali);
+                  },
+                  child: const Text('SELESAIKAN'),
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _prosesBayar(String metode, int bayar, int kembali) async {
+    setState(() => _isLoading = true);
+    final now = DateTime.now();
+    final idTrx = "TRX-${now.millisecondsSinceEpoch}";
+
+    await DatabaseHelper.instance.simpanTransaksi({
+      'id_transaksi': idTrx,
+      'tanggal': DateFormat('yyyy-MM-dd').format(now),
+      'waktu': DateFormat('HH:mm:ss').format(now),
+      'total': _totalBelanja,
+      'items_json': jsonEncode(_keranjang),
+      'status_sync': 0,
+    });
+
+    if (_urlAppScript.isNotEmpty) {
+      bool sukses = await ApiService.kirimTransaksi(_urlAppScript, _namaCabang, _namaKasir, _keranjang, metode);
+      if (sukses) await DatabaseHelper.instance.updateStatusSync(idTrx);
+    }
+
+    if (_selectedPrinter != null) {
+      await PrinterService.cetakStruk(_selectedPrinter!, _namaCabang, _namaKasir, idTrx, _keranjang, _totalBelanja, bayar, kembali, metode);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _keranjang.clear();
+    });
   }
 
   @override
@@ -207,11 +287,14 @@ class _KasirScreenState extends State<KasirScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Kasir: $_namaCabang', style: const TextStyle(fontSize: 16)),
-            Text('Petugas: $_namaKasir', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text('Petugas: $_namaKasir', style: const TextStyle(fontSize: 12)),
           ],
         ),
         backgroundColor: const Color(0xFFD32F2F),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(icon: const Icon(Icons.print), onPressed: _pilihPrinter, tooltip: 'Pilih Printer'),
+        ],
       ),
       body: Column(
         children: [
@@ -230,58 +313,57 @@ class _KasirScreenState extends State<KasirScreen> {
                     onSelected: (val) => setState(() => _kategoriAktif = kat),
                     selectedColor: const Color(0xFFFFF0F0),
                     labelStyle: TextStyle(color: isActive ? const Color(0xFFD32F2F) : Colors.black87, fontWeight: FontWeight.bold),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: isActive ? const Color(0xFFD32F2F) : Colors.transparent)),
                   ),
                 );
               }).toList(),
             ),
           ),
-          
           Expanded(
-            child: produkTampil.isEmpty
-                ? const Center(child: Text('Produk tidak ditemukan'))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: 1.1,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
+            child: GridView.builder(
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 1.1,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: produkTampil.length,
+              itemBuilder: (context, index) {
+                final produk = produkTampil[index];
+                return InkWell(
+                  onTap: () => _tambahKeKeranjang(produk),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (produk['gambar'] != null && produk['gambar'] != '')
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(File(produk['gambar']), height: 50, width: double.infinity, fit: BoxFit.cover),
+                            )
+                          else
+                            const SizedBox(height: 50),
+                          Text(produk['nama'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(_currencyFormat.format(produk['harga']), style: const TextStyle(color: Color(0xFFD32F2F), fontWeight: FontWeight.bold, fontSize: 13)),
+                              const Icon(Icons.add_circle, color: Color(0xFFD32F2F), size: 20),
+                            ],
+                          )
+                        ],
+                      ),
                     ),
-                    itemCount: produkTampil.length,
-                    itemBuilder: (context, index) {
-                      final produk = produkTampil[index];
-                      return InkWell(
-                        onTap: () => _tambahKeKeranjang(produk),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(produk['nama'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(_currencyFormat.format(produk['harga']), style: const TextStyle(color: Color(0xFFD32F2F), fontWeight: FontWeight.bold)),
-                                    Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(color: Color(0xFFD32F2F), shape: BoxShape.circle),
-                                      child: const Icon(Icons.add, color: Colors.white, size: 18),
-                                    )
-                                  ],
-                                )
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
                   ),
+                );
+              },
+            ),
           ),
         ],
       ),
