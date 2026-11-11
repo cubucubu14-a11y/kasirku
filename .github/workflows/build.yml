@@ -32,6 +32,17 @@ jobs:
           cp -r temp_app/android .
           rm -rf temp_app
 
+      - name: Inject All Permissions
+        run: |
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' android/app/src/main/AndroidManifest.xml
+
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -47,7 +58,7 @@ jobs:
           storeFile=kasirku.jks
           EOF
 
-      - name: Konfigurasi Signing Gradle
+      - name: Konfigurasi Signing Gradle & Patch Namespace
         run: |
           cat > android/app/build.gradle << 'EOF'
           plugins {
@@ -123,6 +134,13 @@ jobs:
 
           dependencies {}
           EOF
+          
+          # Patch Namespace untuk flutter_bluetooth_serial
+          PUB_CACHE="/home/runner/.pub-cache"
+          GRADLE_FILE=$(find $PUB_CACHE -path "*flutter_bluetooth_serial*/android/build.gradle" | head -1)
+          if [ -n "$GRADLE_FILE" ]; then
+            sed -i '/android {/a \    namespace "io.github.edufolly.flutterbluetoothserial"' "$GRADLE_FILE"
+          fi
 
       - name: Flutter pub get
         run: flutter pub get
@@ -133,22 +151,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
+             build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-ui-final
-          path: build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
+          name: kasirku-apk-final
+          path: build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.0.0-ui-final
-          name: "Kasirku v4.0.0 - Full UI"
-          body: "Rilis UI Final: Navigasi bawah (Kasir, Riwayat, Pengaturan) dan sistem database lokal yang lebih rapi."
-          files: build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
+          tag_name: v5.0.0-final
+          name: "Kasirku v5.0.0 - Full Release"
+          body: "Rilis lengkap: Pembayaran Tunai/Kris, Kembalian, Cetak Printer, PIN Toko, Galeri Produk, dan Filter Riwayat."
+          files: build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
           draft: false
           prerelease: false
         env:
