@@ -10,7 +10,7 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('kasirku_offline.db');
+    _database = await _initDB('kasirku_v2.db');
     return _database!;
   }
 
@@ -22,33 +22,64 @@ class DatabaseHelper {
   }
 
   Future _createDB(Database db, int version) async {
-    // Tabel untuk menyimpan transaksi yang belum terkirim (pending)
+    // Tabel Produk
     await db.execute('''
-    CREATE TABLE transaksi_pending (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      data_json TEXT NOT NULL
+    CREATE TABLE produk (
+      id TEXT PRIMARY KEY,
+      nama TEXT NOT NULL,
+      harga INTEGER NOT NULL,
+      kategori TEXT NOT NULL
     )
     ''');
+
+    // Tabel Transaksi
+    await db.execute('''
+    CREATE TABLE transaksi (
+      id_transaksi TEXT PRIMARY KEY,
+      tanggal TEXT NOT NULL,
+      waktu TEXT NOT NULL,
+      total INTEGER NOT NULL,
+      items_json TEXT NOT NULL,
+      status_sync INTEGER NOT NULL
+    )
+    ''');
+
+    // Masukkan produk dummy awal
+    await db.insert('produk', {'id': 'P001', 'nama': 'Kopi Susu', 'harga': 20000, 'kategori': 'Minuman'});
+    await db.insert('produk', {'id': 'P002', 'nama': 'Roti Bakar', 'harga': 15000, 'kategori': 'Makanan'});
+    await db.insert('produk', {'id': 'P003', 'nama': 'Nasi Goreng', 'harga': 25000, 'kategori': 'Makanan'});
+    await db.insert('produk', {'id': 'P004', 'nama': 'Air Mineral', 'harga': 5000, 'kategori': 'Minuman'});
   }
 
-  // Simpan transaksi ke antrean lokal
-  Future<int> simpanAntrean(Map<String, dynamic> data) async {
+  // --- FUNGSI PRODUK ---
+  Future<List<Map<String, dynamic>>> getProduk() async {
     final db = await instance.database;
-    return await db.insert('transaksi_pending', {
-      'data_json': jsonEncode(data),
-    });
+    return await db.query('produk');
   }
 
-  // Ambil semua transaksi yang tertunda
-  Future<List<Map<String, dynamic>>> getAntrean() async {
+  Future<int> tambahProduk(Map<String, dynamic> produk) async {
     final db = await instance.database;
-    final result = await db.query('transaksi_pending');
-    return result;
+    return await db.insert('produk', produk);
   }
 
-  // Hapus transaksi dari antrean setelah berhasil dikirim ke AppScript
-  Future<int> hapusAntrean(int id) async {
+  Future<int> hapusProduk(String id) async {
     final db = await instance.database;
-    return await db.delete('transaksi_pending', where: 'id = ?', whereArgs: [id]);
+    return await db.delete('produk', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- FUNGSI TRANSAKSI ---
+  Future<int> simpanTransaksi(Map<String, dynamic> trx) async {
+    final db = await instance.database;
+    return await db.insert('transaksi', trx);
+  }
+
+  Future<List<Map<String, dynamic>>> getTransaksi() async {
+    final db = await instance.database;
+    return await db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
+  }
+
+  Future<int> updateStatusSync(String idTransaksi) async {
+    final db = await instance.database;
+    return await db.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
   }
 }
