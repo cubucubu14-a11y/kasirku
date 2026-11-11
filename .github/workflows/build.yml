@@ -133,22 +133,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
+             build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-final
-          path: build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
+          name: kasirku-apk-ui-final
+          path: build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.2.0-final
-          name: "Kasirku v3.2.0 - Final UI (Simulasi Print)"
-          body: "Rilis final aplikasi kasir. Fitur sinkronisasi offline sudah berjalan. Printer disimulasikan."
-          files: build/app/outputs/flutter-apk/kasirku-v3.2.0-final.apk
+          tag_name: v4.0.0-ui-final
+          name: "Kasirku v4.0.0 - Full UI"
+          body: "Rilis UI Final: Navigasi bawah (Kasir, Riwayat, Pengaturan) dan sistem database lokal yang lebih rapi."
+          files: build/app/outputs/flutter-apk/kasirku-v4.0.0-ui-final.apk
           draft: false
           prerelease: false
         env:
