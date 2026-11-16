@@ -32,7 +32,8 @@ class DatabaseHelper {
       id TEXT PRIMARY KEY,
       nama TEXT NOT NULL,
       harga INTEGER NOT NULL,
-      kategori TEXT NOT NULL
+      kategori TEXT NOT NULL,
+      gambar TEXT DEFAULT ''
     )
     ''');
 
@@ -56,11 +57,16 @@ class DatabaseHelper {
     await db.insert('produk', {'id': 'P004', 'nama': 'Air Mineral', 'harga': 5000, 'kategori': 'Minuman'});
   }
 
-  // Migrasi dari versi 1 ke 2: tambah kolom metode
+  // Migrasi dari versi 1 ke 2: tambah kolom metode (transaksi) dan gambar (produk)
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       try {
         await db.execute("ALTER TABLE transaksi ADD COLUMN metode TEXT DEFAULT 'Tunai'");
+      } catch (_) {
+        // kolom sudah ada, abaikan
+      }
+      try {
+        await db.execute("ALTER TABLE produk ADD COLUMN gambar TEXT DEFAULT ''");
       } catch (_) {
         // kolom sudah ada, abaikan
       }
