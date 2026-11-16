@@ -119,6 +119,17 @@ class DatabaseHelper {
     return await db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
   }
 
+  // Transaksi yang belum terkirim ke Google Sheets (status_sync = 0)
+  Future<List<Map<String, dynamic>>> getTransaksiBelumSync() async {
+    final db = await instance.database;
+    return await db.query(
+      'transaksi',
+      where: 'status_sync = ?',
+      whereArgs: [0],
+      orderBy: 'tanggal ASC, waktu ASC',
+    );
+  }
+
   Future<int> updateStatusSync(String idTransaksi) async {
     final db = await instance.database;
     return await db.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
