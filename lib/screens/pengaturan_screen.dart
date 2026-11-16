@@ -116,11 +116,12 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
         content: SingleChildScrollView(
           child: StatefulBuilder(
             builder: (context, setModalState) {
+              final String? path = gambarPath;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (gambarPath != null && gambarPath.isNotEmpty)
-                    Image.file(File(gambarPath), height: 100, width: 100, fit: BoxFit.cover)
+                  if (path != null && path.isNotEmpty)
+                    Image.file(File(path), height: 100, width: 100, fit: BoxFit.cover)
                   else
                     Container(height: 100, width: 100, color: Colors.grey[300], child: const Icon(Icons.image, size: 50)),
                   TextButton.icon(
