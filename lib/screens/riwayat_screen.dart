@@ -49,6 +49,73 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     setState(() => _riwayat = data);
   }
 
+  bool _sedangSinkron = false;
+
+  void _snack(String pesan) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan)));
+  }
+
+  Future<void> _sinkronSemua() async {
+    if (_sedangSinkron) return;
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('url_appscript') ?? '';
+    final cabang = prefs.getString('nama_cabang') ?? '';
+    final kasir = prefs.getString('nama_kasir') ?? '';
+
+    if (url.isEmpty) {
+      _snack('URL Apps Script belum diisi di menu Pengaturan');
+      return;
+    }
+
+    final pending = await DatabaseHelper.instance.getTransaksiBelumSync();
+    if (pending.isEmpty) {
+      _snack('Semua transaksi sudah tersinkron');
+      return;
+    }
+
+    setState(() => _sedangSinkron = true);
+    int berhasil = 0;
+    int gagal = 0;
+    String errorTerakhir = '';
+
+    for (final trx in pending) {
+      try {
+        final List decoded = jsonDecode(trx['items_json']);
+        final items = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        final sukses = await ApiService.kirimTransaksi(
+          url,
+          cabang,
+          kasir,
+          items,
+          trx['metode']?.toString(),
+          idTransaksi: trx['id_transaksi'].toString(),
+          tanggal: trx['tanggal'].toString(),
+          waktu: trx['waktu'].toString(),
+        );
+        if (sukses) {
+          await DatabaseHelper.instance.updateStatusSync(trx['id_transaksi'].toString());
+          berhasil++;
+        } else {
+          gagal++;
+          errorTerakhir = ApiService.lastError;
+        }
+      } catch (e) {
+        gagal++;
+        errorTerakhir = e.toString();
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _sedangSinkron = false);
+    await _loadRiwayat();
+    if (gagal == 0) {
+      _snack('Berhasil sinkron $berhasil transaksi');
+    } else {
+      _snack('Berhasil $berhasil, gagal $gagal. Error: $errorTerakhir');
+    }
+  }
+
   void _prosesVoid(String idTrx, String statusSync) async {
     bool confirm = await showDialog(
       context: context,
@@ -82,6 +149,22 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
         title: const Text('Riwayat Penjualan'),
         backgroundColor: const Color(0xFFD32F2F),
         foregroundColor: Colors.white,
+        actions: [
+          _sedangSinkron
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.cloud_sync),
+                  tooltip: 'Sinkron ke Google Sheets',
+                  onPressed: _sinkronSemua,
+                ),
+        ],
       ),
       body: Column(
         children: [
