@@ -58,7 +58,7 @@ jobs:
           storeFile=kasirku.jks
           EOF
 
-      - name: Konfigurasi Signing Gradle & Patch Namespace
+      - name: Konfigurasi Signing Gradle
         run: |
           cat > android/app/build.gradle << 'EOF'
           plugins {
@@ -134,16 +134,38 @@ jobs:
 
           dependencies {}
           EOF
-          
-          # Patch Namespace untuk flutter_bluetooth_serial
-          PUB_CACHE="/home/runner/.pub-cache"
-          GRADLE_FILE=$(find $PUB_CACHE -path "*flutter_bluetooth_serial*/android/build.gradle" | head -1)
-          if [ -n "$GRADLE_FILE" ]; then
-            sed -i '/android {/a \    namespace "io.github.edufolly.flutterbluetoothserial"' "$GRADLE_FILE"
-          fi
 
       - name: Flutter pub get
         run: flutter pub get
+
+      - name: Patch flutter_bluetooth_serial
+        run: |
+          F=$(find $HOME/.pub-cache -path "*flutter_bluetooth_serial-*/android/build.gradle" | head -1)
+          if [ -z "$F" ]; then
+            echo "Plugin flutter_bluetooth_serial tidak ditemukan di pub-cache"
+            exit 1
+          fi
+          echo "Patching $F"
+
+          # 1. Tambahkan namespace (wajib di AGP 8+)
+          if ! grep -q "namespace" "$F"; then
+            sed -i '0,/^android {/s//android {\n    namespace "io.github.edufolly.flutterbluetoothserial"/' "$F"
+          fi
+
+          # 2. Naikkan compileSdk (mengatasi error lStar not found)
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' "$F"
+
+          # 3. jcenter sudah mati, ganti ke mavenCentral
+          sed -i 's/jcenter()/mavenCentral()/g' "$F"
+
+          # 4. Hapus atribut package di manifest plugin (ditolak AGP 8)
+          M="$(dirname "$F")/src/main/AndroidManifest.xml"
+          sed -i 's/ package="[^"]*"//' "$M"
+
+          echo "----- build.gradle hasil patch -----"
+          cat "$F"
+          echo "----- AndroidManifest hasil patch -----"
+          cat "$M"
 
       - name: Build APK (Signed)
         run: flutter build apk --release
