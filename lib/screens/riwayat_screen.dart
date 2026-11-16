@@ -31,21 +31,22 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     if (_filterAktif == 'Hari Ini') {
       tanggalFilter = formatter.format(now);
     } else if (_filterAktif == 'Bulan Ini') {
-      tanggalFilter = formatter.format(now).substring(0, 7); 
+      tanggalFilter = formatter.format(now).substring(0, 7);
     } else if (_filterAktif == 'Custom') {
-      final picked = await showDatePicker(context: context, initialDate: now, firstDate: DateTime(2020), lastDate: DateTime(2030));
-      if (picked != null) tanggalFilter = formatter.format(picked);
-      else return;
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2030),
+      );
+      if (picked == null) return;
+      tanggalFilter = formatter.format(picked);
     }
 
+    // Filter (harian / bulanan) sudah ditangani di DatabaseHelper lewat LIKE
     final data = await DatabaseHelper.instance.getTransaksi(filterTanggal: tanggalFilter);
-    
-    if (_filterAktif == 'Bulan Ini' && tanggalFilter != null) {
-      final filtered = data.where((t) => t['tanggal'].toString().startsWith(tanggalFilter)).toList();
-      setState(() => _riwayat = filtered);
-    } else {
-      setState(() => _riwayat = data);
-    }
+    if (!mounted) return;
+    setState(() => _riwayat = data);
   }
 
   void _prosesVoid(String idTrx, String statusSync) async {
@@ -63,7 +64,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
 
     if (confirm) {
       await DatabaseHelper.instance.voidTransaksiLokal(idTrx);
-      
+
       if (statusSync == '1') {
         final prefs = await SharedPreferences.getInstance();
         final url = prefs.getString('url_appscript') ?? '';
@@ -108,7 +109,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
               ),
             ),
           ),
-          
+
           Expanded(
             child: _riwayat.isEmpty
                 ? const Center(child: Text('Tidak ada riwayat transaksi'))
@@ -120,7 +121,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                       int status = trx['status_sync'];
                       bool isVoid = status == 2;
                       bool isSynced = status == 1;
-                      
+
                       return Card(
                         color: isVoid ? Colors.grey[300] : Colors.white,
                         child: ListTile(
