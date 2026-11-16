@@ -1,6 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'dart:convert';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -18,7 +17,12 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -40,7 +44,8 @@ class DatabaseHelper {
       waktu TEXT NOT NULL,
       total INTEGER NOT NULL,
       items_json TEXT NOT NULL,
-      status_sync INTEGER NOT NULL
+      status_sync INTEGER NOT NULL,
+      metode TEXT DEFAULT 'Tunai'
     )
     ''');
 
@@ -49,6 +54,17 @@ class DatabaseHelper {
     await db.insert('produk', {'id': 'P002', 'nama': 'Roti Bakar', 'harga': 15000, 'kategori': 'Makanan'});
     await db.insert('produk', {'id': 'P003', 'nama': 'Nasi Goreng', 'harga': 25000, 'kategori': 'Makanan'});
     await db.insert('produk', {'id': 'P004', 'nama': 'Air Mineral', 'harga': 5000, 'kategori': 'Minuman'});
+  }
+
+  // Migrasi dari versi 1 ke 2: tambah kolom metode
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute("ALTER TABLE transaksi ADD COLUMN metode TEXT DEFAULT 'Tunai'");
+      } catch (_) {
+        // kolom sudah ada, abaikan
+      }
+    }
   }
 
   // --- FUNGSI PRODUK ---
@@ -62,6 +78,16 @@ class DatabaseHelper {
     return await db.insert('produk', produk);
   }
 
+  Future<int> editProduk(Map<String, dynamic> produk) async {
+    final db = await instance.database;
+    return await db.update(
+      'produk',
+      produk,
+      where: 'id = ?',
+      whereArgs: [produk['id']],
+    );
+  }
+
   Future<int> hapusProduk(String id) async {
     final db = await instance.database;
     return await db.delete('produk', where: 'id = ?', whereArgs: [id]);
@@ -73,13 +99,28 @@ class DatabaseHelper {
     return await db.insert('transaksi', trx);
   }
 
-  Future<List<Map<String, dynamic>>> getTransaksi() async {
+  // filterTanggal: 'yyyy-MM-dd' (harian) atau 'yyyy-MM' (bulanan), null = semua
+  Future<List<Map<String, dynamic>>> getTransaksi({String? filterTanggal}) async {
     final db = await instance.database;
+    if (filterTanggal != null && filterTanggal.isNotEmpty) {
+      return await db.query(
+        'transaksi',
+        where: 'tanggal LIKE ?',
+        whereArgs: ['$filterTanggal%'],
+        orderBy: 'tanggal DESC, waktu DESC',
+      );
+    }
     return await db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
   }
 
   Future<int> updateStatusSync(String idTransaksi) async {
     final db = await instance.database;
     return await db.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
+  }
+
+  // Tandai transaksi sebagai VOID (status_sync = 2)
+  Future<int> voidTransaksiLokal(String idTransaksi) async {
+    final db = await instance.database;
+    return await db.update('transaksi', {'status_sync': 2}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
   }
 }
