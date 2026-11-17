@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import '../services/database_helper.dart';
+import '../services/sync_service.dart';
 
 class RiwayatScreen extends StatefulWidget {
   const RiwayatScreen({super.key});
@@ -45,9 +46,10 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   List<Map<String, dynamic>> get _transaksiAktif => _riwayat.where((t) => (t['status_sync'] as num).toInt() != 2).toList();
-  int get _totalOmset => _transaksiAktif.fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
-  int get _totalTunai => _transaksiAktif.where((t) => (t['metode']?.toString().toLowerCase() ?? 'tunai') == 'tunai').fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
-  int get _totalQris => _transaksiAktif.where((t) { final method = t['metode']?.toString().toLowerCase() ?? ''; return method == 'qris' || method == 'kris'; }).fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
+  List<Map<String, dynamic>> get _transaksiTerfilter => _transaksiAktif.where(_containsFilteredProduct).toList();
+  int get _totalOmset => _transaksiTerfilter.fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
+  int get _totalTunai => _transaksiTerfilter.where((t) => (t['metode']?.toString().toLowerCase() ?? 'tunai') == 'tunai').fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
+  int get _totalQris => _transaksiTerfilter.where((t) { final method = t['metode']?.toString().toLowerCase() ?? ''; return method == 'qris' || method == 'kris'; }).fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
 
   List<MapEntry<String, Map<String, int>>> get _peringkatProduk {
     final sales = <String, Map<String, int>>{};
@@ -97,38 +99,26 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     }
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('url_appscript') ?? '';
-    final cabang = prefs.getString('nama_cabang') ?? '';
-    final kasir = prefs.getString('nama_kasir') ?? '';
     if (url.isEmpty) { _snack('URL Apps Script belum diisi di menu Pengaturan'); return; }
-    final List<Map<String, dynamic>> targets;
-    if (paksa) {
-      targets = (await DatabaseHelper.instance.getTransaksi()).where((t) => (t['status_sync'] as num).toInt() != 2).toList();
-    } else {
-      targets = await DatabaseHelper.instance.getTransaksiBelumSync();
-    }
-    if (targets.isEmpty) { _snack('Tidak ada transaksi yang perlu dikirim'); return; }
 
     setState(() => _sedangSinkron = true);
-    var successCount = 0;
-    var failureCount = 0;
-    var lastError = '';
+    Map<String, int> result = {'success': 0, 'failed': 0};
+    String lastError = '';
     try {
-      for (final trx in targets) {
-        try {
-          final decoded = jsonDecode(trx['items_json']) as List<dynamic>;
-          final items = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          final success = await ApiService.kirimTransaksi(url, cabang, kasir, items, trx['metode']?.toString(), idTransaksi: trx['id_transaksi'].toString(), tanggal: trx['tanggal'].toString(), waktu: trx['waktu'].toString());
-          if (success) {
-            await DatabaseHelper.instance.updateStatusSync(trx['id_transaksi'].toString());
-            successCount++;
-          } else { failureCount++; lastError = ApiService.lastError; }
-        } catch (error) { failureCount++; lastError = error.toString(); }
-      }
+      // Semua sinkronisasi (termasuk paksa) lewat SyncService agar konsisten
+      // dan tetap memakai outbox (upsert/delete).
+      result = await SyncService.instance.syncPending(force: paksa);
+    } catch (e) {
+      lastError = e.toString();
     } finally {
       if (mounted) setState(() => _sedangSinkron = false);
     }
     await _loadRiwayat();
-    _snack(failureCount == 0 ? 'Berhasil sinkron $successCount transaksi' : 'Berhasil $successCount, gagal $failureCount. Error: $lastError');
+    if (result['failed'] == 0) {
+      _snack('Berhasil sinkron ${result['success']} transaksi');
+    } else {
+      _snack('Berhasil ${result['success']}, gagal ${result['failed']}. Error: $lastError');
+    }
   }
 
   Future<void> _editTransaksi(Map<String, dynamic> trx) async {
@@ -138,69 +128,102 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     final method = ValueNotifier<String>(trx['metode']?.toString() ?? 'Tunai');
     var saving = false;
 
-    final updatedItems = await showDialog<List<Map<String, dynamic>>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
-        int total() => items.fold<int>(0, (sum, item) => sum + ((item['harga'] as num).toInt() * (item['qty'] as num).toInt()));
-        return AlertDialog(
-          title: Text('Edit Transaksi ${trx['id_transaksi']}'),
-          content: SizedBox(width: double.maxFinite, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ...items.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(item['nama'].toString()),
-                subtitle: Text('${item['qty']} x ${_currencyFormat.format(item['harga'])}'),
-                trailing: SizedBox(width: 132, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  IconButton(onPressed: () => setDialogState(() { final qty = (item['qty'] as num).toInt(); if (qty > 1) { item['qty'] = qty - 1; } else { items.removeAt(index); } }), icon: const Icon(Icons.remove_circle_outline)),
-                  Text('${item['qty']}'),
-                  IconButton(onPressed: () => setDialogState(() => item['qty'] = (item['qty'] as num).toInt() + 1), icon: const Icon(Icons.add_circle_outline)),
-                ])),
-              );
-            }),
-            const Divider(),
-            Align(alignment: Alignment.centerRight, child: Text('Total: ${_currencyFormat.format(total())}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-            const SizedBox(height: 8),
-            ValueListenableBuilder<String>(valueListenable: method, builder: (context, value, _) => DropdownButtonFormField<String>(value: value.toLowerCase() == 'qris' ? 'QRIS' : (value.toLowerCase() == 'kris' ? 'Kris' : 'Tunai'), decoration: const InputDecoration(labelText: 'Metode pembayaran'), items: const [DropdownMenuItem(value: 'Tunai', child: Text('Tunai')), DropdownMenuItem(value: 'QRIS', child: Text('QRIS')), DropdownMenuItem(value: 'Kris', child: Text('Kris (legacy)'))], onChanged: (v) { if (v != null) method.value = v; })),
-          ]))),
-          actions: [
-            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text('Batal')),
-            ElevatedButton(onPressed: saving || items.isEmpty ? null : () async {
-              setDialogState(() => saving = true);
-              final prefs = await SharedPreferences.getInstance();
-              final url = prefs.getString('url_appscript') ?? '';
-              final branch = prefs.getString('nama_cabang') ?? '';
-              final id = trx['id_transaksi'].toString();
-              final normalizedMethod = method.value == 'Kris' ? 'Kris' : method.value;
-              if ((trx['status_sync'] as num).toInt() == 1) {
-                if (url.isEmpty) { setDialogState(() => saving = false); _snack('Edit gagal: URL Apps Script belum diisi'); return; }
-                final serverOk = await ApiService.editTransaksi(url: url, namaCabang: branch, idTransaksi: id, tanggal: trx['tanggal'].toString(), waktu: trx['waktu'].toString(), total: total(), metode: normalizedMethod);
-                if (!serverOk) { setDialogState(() => saving = false); _snack('Edit gagal di server: ${ApiService.lastError}'); return; }
-              }
-              final resultItems = items.map((item) => Map<String, dynamic>.from(item)).toList();
-              if (dialogContext.mounted) Navigator.pop(dialogContext, resultItems);
-            }, child: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Simpan')),
-          ],
-        );
-      }),
-    );
+    try {
+      final updatedItems = await showDialog<List<Map<String, dynamic>>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
+          int total() => items.fold<int>(0, (sum, item) => sum + ((item['harga'] as num).toInt() * (item['qty'] as num).toInt()));
+          return AlertDialog(
+            title: Text('Edit Transaksi ${trx['id_transaksi']}'),
+            content: SizedBox(width: double.maxFinite, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ...items.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(item['nama'].toString()),
+                  subtitle: Text('${item['qty']} x ${_currencyFormat.format(item['harga'])}'),
+                  trailing: SizedBox(width: 132, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    IconButton(onPressed: () => setDialogState(() { final qty = (item['qty'] as num).toInt(); if (qty > 1) { item['qty'] = qty - 1; } else { items.removeAt(index); } }), icon: const Icon(Icons.remove_circle_outline)),
+                    Text('${item['qty']}'),
+                    IconButton(onPressed: () => setDialogState(() => item['qty'] = (item['qty'] as num).toInt() + 1), icon: const Icon(Icons.add_circle_outline)),
+                  ])),
+                );
+              }),
+              const Divider(),
+              Align(alignment: Alignment.centerRight, child: Text('Total: ${_currencyFormat.format(total())}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+              const SizedBox(height: 8),
+              ValueListenableBuilder<String>(valueListenable: method, builder: (context, value, _) => DropdownButtonFormField<String>(value: value.toLowerCase() == 'qris' ? 'QRIS' : (value.toLowerCase() == 'kris' ? 'QRIS' : 'Tunai'), decoration: const InputDecoration(labelText: 'Metode pembayaran'), items: const [DropdownMenuItem(value: 'Tunai', child: Text('Tunai')), DropdownMenuItem(value: 'QRIS', child: Text('QRIS'))], onChanged: (v) { if (v != null) method.value = v; })),
+            ]))),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text('Batal')),
+              ElevatedButton(onPressed: saving || items.isEmpty ? null : () async {
+                setDialogState(() => saving = true);
+                final prefs = await SharedPreferences.getInstance();
+                final url = prefs.getString('url_appscript') ?? '';
+                final branch = prefs.getString('nama_cabang') ?? '';
+                final kasir = prefs.getString('nama_kasir') ?? '';
+                final id = trx['id_transaksi'].toString();
+                final normalizedMethod = method.value == 'Kris' ? 'QRIS' : method.value;
+                final newTotal = total();
+                final resultItems = items.map((item) => Map<String, dynamic>.from(item)).toList();
+                final tanggal = trx['tanggal'].toString();
+                final waktu = trx['waktu'].toString();
 
-    if (updatedItems == null || !mounted) { method.dispose(); return; }
-    final newTotal = updatedItems.fold<int>(0, (sum, item) => sum + ((item['harga'] as num).toInt() * (item['qty'] as num).toInt()));
-    final newMethod = method.value == 'Kris' ? 'Kris' : method.value;
-    method.dispose();
-    await DatabaseHelper.instance.editTransaksi({
-      'id_transaksi': trx['id_transaksi'],
-      'tanggal': trx['tanggal'],
-      'waktu': trx['waktu'],
-      'total': newTotal,
-      'metode': newMethod,
-      'items_json': jsonEncode(updatedItems),
-      'status_sync': trx['status_sync'],
-    });
-    await _loadRiwayat();
-    _snack('Transaksi berhasil diperbarui');
+                // Update lokal dulu (offline-first).
+                await DatabaseHelper.instance.editTransaksi({
+                  'id_transaksi': id,
+                  'tanggal': tanggal,
+                  'waktu': waktu,
+                  'total': newTotal,
+                  'metode': normalizedMethod,
+                  'items_json': jsonEncode(resultItems),
+                  'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0,
+                });
+
+                final wasSynced = (trx['status_sync'] as num).toInt() == 1;
+                if (wasSynced && url.isNotEmpty) {
+                  final serverOk = await ApiService.editTransaksi(
+                    url: url,
+                    namaCabang: branch,
+                    idTransaksi: id,
+                    tanggal: tanggal,
+                    waktu: waktu,
+                    total: newTotal,
+                    metode: normalizedMethod,
+                  );
+                  if (!serverOk) {
+                    // Gagal kirim → enqueue agar SyncService retry nanti.
+                    await DatabaseHelper.instance.enqueueSyncOperation(
+                      id: id,
+                      action: 'upsert',
+                      payload: {
+                        'action': 'simpanTransaksi',
+                        'id_transaksi': id,
+                        'nama_cabang': branch,
+                        'nama_kasir': kasir,
+                        'metode': normalizedMethod,
+                        'tanggal': tanggal,
+                        'waktu': waktu,
+                        'items': resultItems,
+                      },
+                    );
+                    await DatabaseHelper.instance.updateStatusSyncPending(id);
+                  }
+                }
+
+                if (dialogContext.mounted) Navigator.pop(dialogContext, resultItems);
+              }, child: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Simpan')),
+            ],
+          );
+        }),
+      );
+      if (updatedItems == null || !mounted) return;
+      await _loadRiwayat();
+      _snack('Transaksi berhasil diperbarui');
+    } finally {
+      method.dispose();
+    }
   }
 
   Future<void> _hapusTransaksi(Map<String, dynamic> trx) async {
@@ -212,15 +235,33 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     )) ?? false;
     if (!confirm) return;
 
-    if ((trx['status_sync'] as num).toInt() == 1) {
-      final prefs = await SharedPreferences.getInstance();
-      final url = prefs.getString('url_appscript') ?? '';
-      final branch = prefs.getString('nama_cabang') ?? '';
-      if (url.isEmpty) { _snack('Hapus gagal: URL Apps Script belum diisi'); return; }
-      final serverOk = await ApiService.hapusTransaksi(url: url, namaCabang: branch, idTransaksi: id);
-      if (!serverOk) { _snack('Hapus gagal di server: ${ApiService.lastError}'); return; }
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('url_appscript') ?? '';
+    final branch = prefs.getString('nama_cabang') ?? '';
+    final wasSynced = (trx['status_sync'] as num).toInt() == 1;
+
+    // Hapus lokal dulu.
     await DatabaseHelper.instance.hapusTransaksi(id);
+
+    if (wasSynced && url.isNotEmpty) {
+      final serverOk = await ApiService.hapusTransaksi(url: url, namaCabang: branch, idTransaksi: id);
+      if (!serverOk) {
+        // Gagal hapus di server → enqueue delete agar retry.
+        await DatabaseHelper.instance.enqueueSyncOperation(
+          id: id,
+          action: 'delete',
+          payload: {
+            'action': 'hapusTransaksi',
+            'id_transaksi': id,
+            'nama_cabang': branch,
+          },
+        );
+        _snack('Dihapus lokal. Sinkron hapus akan dicoba ulang otomatis.');
+        await _loadRiwayat();
+        return;
+      }
+    }
+
     await _loadRiwayat();
     _snack('Transaksi dihapus');
   }
@@ -250,7 +291,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final transactions = _riwayat.where(_containsFilteredProduct).toList();
+    final transactions = _transaksiTerfilter;
     const filters = ['Semua', 'Hari Ini', 'Bulan Ini', 'Custom'];
     final ranking = _peringkatProduk;
     return Scaffold(
