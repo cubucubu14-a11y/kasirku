@@ -139,6 +139,7 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getTransaksiBelumSync() async => (await database).query('transaksi', where: 'status_sync = ?', whereArgs: [0], orderBy: 'tanggal ASC, waktu ASC');
   Future<int> updateStatusSync(String id) async => (await database).update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [id]);
+  Future<int> updateStatusSyncPending(String id) async => (await database).update('transaksi', {'status_sync': 0}, where: 'id_transaksi = ?', whereArgs: [id]);
   Future<int> hapusTransaksi(String id) async => (await database).delete('transaksi', where: 'id_transaksi = ?', whereArgs: [id]);
   Future<int> voidTransaksiLokal(String id) async => (await database).update('transaksi', {'status_sync': 2}, where: 'id_transaksi = ?', whereArgs: [id]);
 }
