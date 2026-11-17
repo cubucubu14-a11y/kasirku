@@ -2,18 +2,18 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Pesan error terakhir (untuk ditampilkan ke pengguna saat debugging)
   static String lastError = '';
 
-  // Helper POST ke Apps Script. Apps Script membalas dengan redirect 302,
-  // jadi kita ikuti manual dengan GET ke alamat Location.
-  static Future<Map<String, dynamic>?> _post(String url, Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>?> _post(
+    String url,
+    Map<String, dynamic> body,
+  ) async {
     lastError = '';
     try {
       var response = await http
           .post(
             Uri.parse(url),
-            headers: {"Content-Type": "application/json"},
+            headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 30));
@@ -31,17 +31,17 @@ class ApiService {
       }
 
       try {
-        final data = jsonDecode(response.body);
-        if (data is Map<String, dynamic>) return data;
-        lastError = 'Format balasan tidak dikenal';
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+        lastError = 'Format balasan server tidak dikenal';
         return null;
       } catch (_) {
         lastError =
-            'Balasan bukan JSON. Cek deploy Apps Script: akses harus "Anyone" dan URL berakhiran /exec';
+            'Balasan bukan JSON. Periksa deployment Apps Script (/exec, akses Anyone).';
         return null;
       }
-    } catch (e) {
-      lastError = e.toString();
+    } catch (error) {
+      lastError = error.toString();
       return null;
     }
   }
@@ -49,21 +49,18 @@ class ApiService {
   static bool _ok(Map<String, dynamic>? data) {
     if (data == null) return false;
     if (data['status'] == 'success') return true;
-    lastError = (data['message'] ?? 'Gagal').toString();
+    lastError = (data['message'] ?? 'Permintaan gagal').toString();
     return false;
   }
 
-  // 1. Daftarkan cabang baru ke Apps Script (buat tab sheet)
   static Future<bool> setupCabang(String url, String namaCabang) async {
     final data = await _post(url, {
-      "action": "setupCabang",
-      "namaCabang": namaCabang,
+      'action': 'setupCabang',
+      'namaCabang': namaCabang,
     });
     return _ok(data);
   }
 
-  // 2. Kirim transaksi ke Apps Script
-  // idTransaksi/tanggal/waktu: isi dengan data transaksi lokal saat sinkron ulang
   static Future<bool> kirimTransaksi(
     String url,
     String namaCabang,
@@ -75,32 +72,70 @@ class ApiService {
     String? waktu,
   }) async {
     final now = DateTime.now();
-    final tgl = tanggal ??
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    final wkt = waktu ??
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
-    final idTrx = idTransaksi ?? "TRX-${now.millisecondsSinceEpoch}";
-
+    final tgl = tanggal ?? DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
+    final wkt = waktu ?? DateFormatTime.format(now);
     final data = await _post(url, {
-      "action": "simpanTransaksi",
-      "id_transaksi": idTrx,
-      "nama_cabang": namaCabang,
-      "nama_kasir": kasir,
-      "metode": metode ?? 'Tunai',
-      "tanggal": tgl,
-      "waktu": wkt,
-      "items": items,
+      'action': 'simpanTransaksi',
+      'id_transaksi': idTransaksi ?? 'TRX-${now.millisecondsSinceEpoch}',
+      'nama_cabang': namaCabang,
+      'nama_kasir': kasir,
+      'metode': metode ?? 'Tunai',
+      'tanggal': tgl,
+      'waktu': wkt,
+      'items': items,
     });
     return _ok(data);
   }
 
-  // 3. Void transaksi di Apps Script
-  static Future<bool> voidTransaksi(String url, String namaCabang, String idTransaksi) async {
+  static Future<bool> editTransaksi({
+    required String url,
+    required String namaCabang,
+    required String idTransaksi,
+    required String tanggal,
+    required String waktu,
+    required int total,
+    required String metode,
+  }) async {
     final data = await _post(url, {
-      "action": "voidTransaksi",
-      "id_transaksi": idTransaksi,
-      "nama_cabang": namaCabang,
+      'action': 'editTransaksi',
+      'nama_cabang': namaCabang,
+      'id_transaksi': idTransaksi,
+      'tanggal': tanggal,
+      'waktu': waktu,
+      'total': total,
+      'metode': metode,
     });
     return _ok(data);
   }
+
+  static Future<bool> hapusTransaksi({
+    required String url,
+    required String namaCabang,
+    required String idTransaksi,
+  }) async {
+    final data = await _post(url, {
+      'action': 'hapusTransaksi',
+      'nama_cabang': namaCabang,
+      'id_transaksi': idTransaksi,
+    });
+    return _ok(data);
+  }
+
+  static Future<bool> voidTransaksi(
+    String url,
+    String namaCabang,
+    String idTransaksi,
+  ) async {
+    final data = await _post(url, {
+      'action': 'voidTransaksi',
+      'id_transaksi': idTransaksi,
+      'nama_cabang': namaCabang,
+    });
+    return _ok(data);
+  }
+}
+
+class DateFormatTime {
+  static String format(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}:${value.second.toString().padLeft(2, '0')}';
 }

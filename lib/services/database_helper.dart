@@ -15,129 +15,112 @@ class DatabaseHelper {
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
-
-    return await openDatabase(
-      path,
+    return openDatabase(
+      join(dbPath, filePath),
       version: 2,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
   }
 
-  Future _createDB(Database db, int version) async {
-    // Tabel Produk
+  Future<void> _createDB(Database db, int version) async {
     await db.execute('''
-    CREATE TABLE produk (
-      id TEXT PRIMARY KEY,
-      nama TEXT NOT NULL,
-      harga INTEGER NOT NULL,
-      kategori TEXT NOT NULL,
-      gambar TEXT DEFAULT ''
-    )
+      CREATE TABLE produk (
+        id TEXT PRIMARY KEY,
+        nama TEXT NOT NULL,
+        harga INTEGER NOT NULL,
+        kategori TEXT NOT NULL,
+        gambar TEXT DEFAULT ''
+      )
     ''');
-
-    // Tabel Transaksi
     await db.execute('''
-    CREATE TABLE transaksi (
-      id_transaksi TEXT PRIMARY KEY,
-      tanggal TEXT NOT NULL,
-      waktu TEXT NOT NULL,
-      total INTEGER NOT NULL,
-      items_json TEXT NOT NULL,
-      status_sync INTEGER NOT NULL,
-      metode TEXT DEFAULT 'Tunai'
-    )
+      CREATE TABLE transaksi (
+        id_transaksi TEXT PRIMARY KEY,
+        tanggal TEXT NOT NULL,
+        waktu TEXT NOT NULL,
+        total INTEGER NOT NULL,
+        items_json TEXT NOT NULL,
+        status_sync INTEGER NOT NULL,
+        metode TEXT DEFAULT 'Tunai'
+      )
     ''');
-
-    // Masukkan produk dummy awal
     await db.insert('produk', {'id': 'P001', 'nama': 'Kopi Susu', 'harga': 20000, 'kategori': 'Minuman'});
     await db.insert('produk', {'id': 'P002', 'nama': 'Roti Bakar', 'harga': 15000, 'kategori': 'Makanan'});
     await db.insert('produk', {'id': 'P003', 'nama': 'Nasi Goreng', 'harga': 25000, 'kategori': 'Makanan'});
     await db.insert('produk', {'id': 'P004', 'nama': 'Air Mineral', 'harga': 5000, 'kategori': 'Minuman'});
   }
 
-  // Migrasi dari versi 1 ke 2: tambah kolom metode (transaksi) dan gambar (produk)
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      try {
-        await db.execute("ALTER TABLE transaksi ADD COLUMN metode TEXT DEFAULT 'Tunai'");
-      } catch (_) {
-        // kolom sudah ada, abaikan
-      }
-      try {
-        await db.execute("ALTER TABLE produk ADD COLUMN gambar TEXT DEFAULT ''");
-      } catch (_) {
-        // kolom sudah ada, abaikan
-      }
+      try { await db.execute("ALTER TABLE transaksi ADD COLUMN metode TEXT DEFAULT 'Tunai'"); } catch (_) {}
+      try { await db.execute("ALTER TABLE produk ADD COLUMN gambar TEXT DEFAULT ''"); } catch (_) {}
     }
   }
 
-  // --- FUNGSI PRODUK ---
-  Future<List<Map<String, dynamic>>> getProduk() async {
-    final db = await instance.database;
-    return await db.query('produk');
-  }
+  Future<List<Map<String, dynamic>>> getProduk() async =>
+      (await instance.database).query('produk');
 
-  Future<int> tambahProduk(Map<String, dynamic> produk) async {
-    final db = await instance.database;
-    return await db.insert('produk', produk);
-  }
+  Future<int> tambahProduk(Map<String, dynamic> produk) async =>
+      (await instance.database).insert('produk', produk);
 
-  Future<int> editProduk(Map<String, dynamic> produk) async {
-    final db = await instance.database;
-    return await db.update(
-      'produk',
-      produk,
-      where: 'id = ?',
-      whereArgs: [produk['id']],
-    );
-  }
+  Future<int> editProduk(Map<String, dynamic> produk) async =>
+      (await instance.database).update('produk', produk, where: 'id = ?', whereArgs: [produk['id']]);
 
-  Future<int> hapusProduk(String id) async {
-    final db = await instance.database;
-    return await db.delete('produk', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<int> hapusProduk(String id) async =>
+      (await instance.database).delete('produk', where: 'id = ?', whereArgs: [id]);
 
-  // --- FUNGSI TRANSAKSI ---
-  Future<int> simpanTransaksi(Map<String, dynamic> trx) async {
-    final db = await instance.database;
-    return await db.insert('transaksi', trx);
-  }
+  Future<int> simpanTransaksi(Map<String, dynamic> trx) async =>
+      (await instance.database).insert('transaksi', trx);
 
-  // filterTanggal: 'yyyy-MM-dd' (harian) atau 'yyyy-MM' (bulanan), null = semua
+  Future<int> editTransaksi(Map<String, dynamic> trx) async =>
+      (await instance.database).update(
+        'transaksi',
+        trx,
+        where: 'id_transaksi = ?',
+        whereArgs: [trx['id_transaksi']],
+      );
+
+  Future<int> hapusTransaksi(String idTransaksi) async =>
+      (await instance.database).delete(
+        'transaksi',
+        where: 'id_transaksi = ?',
+        whereArgs: [idTransaksi],
+      );
+
   Future<List<Map<String, dynamic>>> getTransaksi({String? filterTanggal}) async {
     final db = await instance.database;
     if (filterTanggal != null && filterTanggal.isNotEmpty) {
-      return await db.query(
+      return db.query(
         'transaksi',
         where: 'tanggal LIKE ?',
         whereArgs: ['$filterTanggal%'],
         orderBy: 'tanggal DESC, waktu DESC',
       );
     }
-    return await db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
+    return db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
   }
 
-  // Transaksi yang belum terkirim ke Google Sheets (status_sync = 0)
-  Future<List<Map<String, dynamic>>> getTransaksiBelumSync() async {
-    final db = await instance.database;
-    return await db.query(
-      'transaksi',
-      where: 'status_sync = ?',
-      whereArgs: [0],
-      orderBy: 'tanggal ASC, waktu ASC',
-    );
-  }
+  Future<List<Map<String, dynamic>>> getTransaksiBelumSync() async =>
+      (await instance.database).query(
+        'transaksi',
+        where: 'status_sync = ?',
+        whereArgs: [0],
+        orderBy: 'tanggal ASC, waktu ASC',
+      );
 
-  Future<int> updateStatusSync(String idTransaksi) async {
-    final db = await instance.database;
-    return await db.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
-  }
+  Future<int> updateStatusSync(String idTransaksi) async =>
+      (await instance.database).update(
+        'transaksi',
+        {'status_sync': 1},
+        where: 'id_transaksi = ?',
+        whereArgs: [idTransaksi],
+      );
 
-  // Tandai transaksi sebagai VOID (status_sync = 2)
-  Future<int> voidTransaksiLokal(String idTransaksi) async {
-    final db = await instance.database;
-    return await db.update('transaksi', {'status_sync': 2}, where: 'id_transaksi = ?', whereArgs: [idTransaksi]);
-  }
+  Future<int> voidTransaksiLokal(String idTransaksi) async =>
+      (await instance.database).update(
+        'transaksi',
+        {'status_sync': 2},
+        where: 'id_transaksi = ?',
+        whereArgs: [idTransaksi],
+      );
 }
