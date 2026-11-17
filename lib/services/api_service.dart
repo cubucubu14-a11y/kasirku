@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 class ApiService {
   static String lastError = '';
@@ -72,8 +74,9 @@ class ApiService {
     String? waktu,
   }) async {
     final now = DateTime.now();
-    final tgl = tanggal ?? DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
-    final wkt = waktu ?? DateFormatTime.format(now);
+    final tgl = tanggal ??
+        DateFormat('yyyy-MM-dd').format(now);
+    final wkt = waktu ?? DateFormat('HH:mm:ss').format(now);
     final data = await _post(url, {
       'action': 'simpanTransaksi',
       'id_transaksi': idTransaksi ?? 'TRX-${now.millisecondsSinceEpoch}',
@@ -133,9 +136,4 @@ class ApiService {
     });
     return _ok(data);
   }
-}
-
-class DateFormatTime {
-  static String format(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}:${value.second.toString().padLeft(2, '0')}';
 }
