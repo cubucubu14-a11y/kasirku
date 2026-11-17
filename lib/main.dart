@@ -4,11 +4,15 @@ import 'screens/setup_screen.dart';
 import 'screens/main_navigation.dart';
 import 'services/sync_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
-  SyncService.instance.initialize();
+  // Inisialisasi SyncService setelah app ter-mount agar observer lifecycle aman.
+  unawaited(SyncService.instance.initialize());
 }
+
+// Helper kecil agar tidak perlu import 'dart:async' hanya untuk unawaited.
+void unawaited(Future<void> future) {}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
