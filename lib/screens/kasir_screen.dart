@@ -257,6 +257,7 @@ class _KasirScreenState extends State<KasirScreen> {
       'tanggal': DateFormat('yyyy-MM-dd').format(now),
       'waktu': DateFormat('HH:mm:ss').format(now),
       'total': _totalBelanja,
+      'metode': metode,
       'items_json': jsonEncode(_keranjang),
       'status_sync': 0,
     });
@@ -378,3 +379,4 @@ class _KasirScreenState extends State<KasirScreen> {
     );
   }
 }
+

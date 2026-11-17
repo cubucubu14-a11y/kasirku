@@ -43,7 +43,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       tanggalFilter = formatter.format(picked);
     }
 
-    // Filter (harian / bulanan) sudah ditangani di DatabaseHelper lewat LIKE
     final data = await DatabaseHelper.instance.getTransaksi(filterTanggal: tanggalFilter);
     if (!mounted) return;
     setState(() => _riwayat = data);
@@ -116,7 +115,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     }
   }
 
-  void _prosesVoid(String idTrx, String statusSync) async {
+  Future<void> _prosesVoid(String idTrx, String statusSync) async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -129,17 +128,25 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       ),
     ) ?? false;
 
-    if (confirm) {
-      await DatabaseHelper.instance.voidTransaksiLokal(idTrx);
+    if (!confirm) return;
 
-      if (statusSync == '1') {
-        final prefs = await SharedPreferences.getInstance();
-        final url = prefs.getString('url_appscript') ?? '';
-        final cabang = prefs.getString('nama_cabang') ?? '';
-        if (url.isNotEmpty) await ApiService.voidTransaksi(url, cabang, idTrx);
+    bool suksesServer = true;
+    if (statusSync == '1') {
+      final prefs = await SharedPreferences.getInstance();
+      final url = prefs.getString('url_appscript') ?? '';
+      final cabang = prefs.getString('nama_cabang') ?? '';
+      if (url.isNotEmpty) {
+        suksesServer = await ApiService.voidTransaksi(url, cabang, idTrx);
       }
-      _loadRiwayat();
     }
+
+    if (!suksesServer) {
+      _snack('VOID gagal dikirim ke server. Coba lagi nanti.');
+      return;
+    }
+
+    await DatabaseHelper.instance.voidTransaksiLokal(idTrx);
+    await _loadRiwayat();
   }
 
   @override
@@ -260,3 +267,4 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     );
   }
 }
+

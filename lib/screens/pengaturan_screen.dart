@@ -90,8 +90,8 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           ElevatedButton(
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('nama_kasir', kasirC.text);
-              await prefs.setString('nama_cabang', cabangC.text);
+              await prefs.setString('nama_kasir', kasirC.text.trim());
+              await prefs.setString('nama_cabang', cabangC.text.trim());
               if (!context.mounted) return;
               Navigator.pop(context);
               _loadData();
@@ -145,23 +145,51 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
           ElevatedButton(
             onPressed: () async {
-              if (namaC.text.isNotEmpty && hargaC.text.isNotEmpty) {
-                final data = {
-                  'id': produk?['id'] ?? "P-${DateTime.now().millisecondsSinceEpoch}",
-                  'nama': namaC.text,
-                  'harga': int.parse(hargaC.text),
-                  'kategori': kategoriC.text,
-                  'gambar': gambarPath ?? '',
-                };
-                if (produk == null) {
-                  await DatabaseHelper.instance.tambahProduk(data);
-                } else {
-                  await DatabaseHelper.instance.editProduk(data);
-                }
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                _loadData();
+              final nama = namaC.text.trim();
+              final kategori = kategoriC.text.trim();
+              final hargaText = hargaC.text.trim();
+
+              if (nama.isEmpty || kategori.isEmpty || hargaText.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Nama, kategori, dan harga produk harus diisi!')),
+                );
+                return;
               }
+
+              int? harga;
+              try {
+                harga = int.parse(hargaText);
+              } catch (_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Harga produk harus berupa angka bulat!')),
+                );
+                return;
+              }
+
+              if (harga < 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Harga produk tidak boleh negatif!')),
+                );
+                return;
+              }
+
+              final data = {
+                'id': produk?['id'] ?? "P-${DateTime.now().millisecondsSinceEpoch}",
+                'nama': nama,
+                'harga': harga,
+                'kategori': kategori,
+                'gambar': gambarPath ?? '',
+              };
+
+              if (produk == null) {
+                await DatabaseHelper.instance.tambahProduk(data);
+              } else {
+                await DatabaseHelper.instance.editProduk(data);
+              }
+
+              if (!context.mounted) return;
+              Navigator.pop(context);
+              _loadData();
             },
             child: const Text('Simpan'),
           )
@@ -195,7 +223,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
             ),
           ),
           const Divider(height: 32),
-          
+
           const Text('URL Google Apps Script', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
           Row(
@@ -206,7 +234,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
             ],
           ),
           const Divider(height: 32),
-          
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -237,7 +265,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
               ),
             ),
           )),
-          
+
           const Divider(height: 32),
           ElevatedButton.icon(
             onPressed: () async {
@@ -255,3 +283,4 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
     );
   }
 }
+
