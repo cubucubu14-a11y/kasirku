@@ -137,11 +137,17 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       final cabang = prefs.getString('nama_cabang') ?? '';
       if (url.isNotEmpty) {
         suksesServer = await ApiService.voidTransaksi(url, cabang, idTrx);
+      } else {
+        suksesServer = false;
+        ApiService.lastError = 'URL Apps Script belum diisi';
       }
     }
 
     if (!suksesServer) {
-      _snack('VOID gagal dikirim ke server. Coba lagi nanti.');
+      final message = ApiService.lastError.isNotEmpty
+          ? 'VOID gagal dikirim ke server: ${ApiService.lastError}'
+          : 'VOID gagal dikirim ke server. Coba lagi nanti.';
+      _snack(message);
       return;
     }
 
@@ -267,4 +273,3 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     );
   }
 }
-
