@@ -116,7 +116,19 @@ class SyncService with WidgetsBindingObserver {
               namaCabang: payload['nama_cabang']?.toString() ?? branch,
               idTransaksi: id,
             );
+          } else if (action == 'edit') {
+            // Aksi edit: kirim lewat endpoint editTransaksi.
+            ok = await ApiService.editTransaksi(
+              url: url,
+              namaCabang: payload['nama_cabang']?.toString() ?? branch,
+              idTransaksi: id,
+              tanggal: payload['tanggal']?.toString() ?? '',
+              waktu: payload['waktu']?.toString() ?? '',
+              total: (payload['total'] as num?)?.toInt() ?? 0,
+              metode: payload['metode']?.toString() ?? 'Tunai',
+            );
           } else {
+            // upsert (simpan / kirim ulang transaksi)
             final decodedItems = (payload['items'] as List<dynamic>? ?? [])
                 .map((item) => Map<String, dynamic>.from(item as Map))
                 .toList();
