@@ -1,11 +1,31 @@
+import 'dart:io';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:typed_data';
 
 class PrinterService {
+  /// Minta izin Bluetooth runtime (wajib di Android 12+).
+  /// Return true jika boleh lanjut akses Bluetooth.
+  static Future<bool> ensurePermission() async {
+    if (!Platform.isAndroid) return true;
+
+    // Android 12+ (API 31+) memakai BLUETOOTH_CONNECT & BLUETOOTH_SCAN.
+    final statuses = await [
+      Permission.bluetoothConnect,
+      Permission.bluetoothScan,
+    ].request();
+
+    final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+    final scanGranted = statuses[Permission.bluetoothScan]?.isGranted ?? false;
+    return connectGranted && scanGranted;
+  }
+
   static Future<List<BluetoothDevice>> getPrinters() async {
     try {
+      final allowed = await ensurePermission();
+      if (!allowed) return [];
       List<BluetoothDevice> bondedDevices = await FlutterBluetoothSerial.instance.getBondedDevices();
       return bondedDevices;
     } catch (e) {
@@ -16,10 +36,13 @@ class PrinterService {
   static Future<bool> cetakStruk(BluetoothDevice printer, String cabang, String kasir, String idTrx, List<Map<String, dynamic>> items, int total, int bayar, int kembali, String metode) async {
     BluetoothConnection? connection;
     try {
+      final allowed = await ensurePermission();
+      if (!allowed) return false;
+
       connection = await BluetoothConnection.toAddress(printer.address);
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      
+
       List<int> bytes = [];
       final now = DateTime.now();
       final formatter = DateFormat('dd/MM/yyyy HH:mm');
@@ -28,7 +51,7 @@ class PrinterService {
       // Header
       bytes += generator.text(cabang, styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
       bytes += generator.hr();
-      
+
       // Info Transaksi
       bytes += generator.text('No: $idTrx', styles: const PosStyles(align: PosAlign.left));
       bytes += generator.text('Tgl: ${formatter.format(now)}', styles: const PosStyles(align: PosAlign.left));
@@ -40,14 +63,14 @@ class PrinterService {
         String nama = item['nama'];
         int qty = item['qty'];
         int harga = item['harga'] * qty;
-        
+
         bytes += generator.text(nama, styles: const PosStyles(align: PosAlign.left));
         bytes += generator.row([
           PosColumn(text: '  $qty x ${currency.format(item['harga'])}', width: 6, styles: const PosStyles(align: PosAlign.left)),
           PosColumn(text: currency.format(harga), width: 6, styles: const PosStyles(align: PosAlign.right)),
         ]);
       }
-      
+
       bytes += generator.hr();
 
       // Total & Pembayaran
@@ -65,7 +88,7 @@ class PrinterService {
           PosColumn(text: currency.format(kembali), width: 6, styles: const PosStyles(align: PosAlign.right)),
         ]);
       }
-      
+
       bytes += generator.hr();
       bytes += generator.text('Terima Kasih :)', styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(2);
