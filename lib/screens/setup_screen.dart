@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'kasir_screen.dart';
+import 'main_navigation.dart';
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -14,6 +14,14 @@ class _SetupScreenState extends State<SetupScreen> {
   final _kasirController = TextEditingController();
   final _cabangController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _kasirController.dispose();
+    _cabangController.dispose();
+    super.dispose();
+  }
 
   Future<void> _simpanPengaturan() async {
     // Hanya Nama Kasir dan Cabang yang WAJIB diisi
@@ -35,14 +43,15 @@ class _SetupScreenState extends State<SetupScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const KasirScreen()),
+        MaterialPageRoute(builder: (context) => const MainNavigation()),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
