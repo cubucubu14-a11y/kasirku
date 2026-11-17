@@ -33,6 +33,13 @@ class _KasirScreenState extends State<KasirScreen> {
     _loadData();
   }
 
+  // Refresh data saat kembali ke tab Kasir (misal setelah ubah produk di Pengaturan).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadData();
+  }
+
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final produk = await DatabaseHelper.instance.getProduk();
@@ -230,7 +237,7 @@ class _KasirScreenState extends State<KasirScreen> {
                   const SizedBox(height: 16),
                   Wrap(spacing: 8, children: [
                     ChoiceChip(label: const Text('Tunai'), selected: metode == 'Tunai', onSelected: (_) => setDialogState(() => metode = 'Tunai')),
-                    ChoiceChip(label: const Text('QRIS'), selected: metode == 'Kris', onSelected: (_) => setDialogState(() => metode = 'Kris')),
+                    ChoiceChip(label: const Text('QRIS'), selected: metode == 'QRIS', onSelected: (_) => setDialogState(() => metode = 'QRIS')),
                   ]),
                   const SizedBox(height: 12),
                   if (metode == 'Tunai') ...[
@@ -328,19 +335,62 @@ class _KasirScreenState extends State<KasirScreen> {
   Future<void> _prosesBayar(String metode, int bayar, int kembali, DateTime now, String idTrx) async {
     setState(() => _isLoading = true);
     try {
-      await DatabaseHelper.instance.simpanTransaksi({
-        'id_transaksi': idTrx,
-        'tanggal': DateFormat('yyyy-MM-dd').format(now),
-        'waktu': DateFormat('HH:mm:ss').format(now),
-        'total': _totalBelanja,
-        'metode': metode,
-        'items_json': jsonEncode(_keranjang),
-        'status_sync': 0,
-      });
+      final tanggal = DateFormat('yyyy-MM-dd').format(now);
+      final waktu = DateFormat('HH:mm:ss').format(now);
+
+      // Selalu simpan lokal + enqueue ke outbox agar tahan offline / crash.
+      await DatabaseHelper.instance.simpanTransaksiOffline(
+        {
+          'id_transaksi': idTrx,
+          'tanggal': tanggal,
+          'waktu': waktu,
+          'total': _totalBelanja,
+          'metode': metode,
+          'items_json': jsonEncode(_keranjang),
+          'status_sync': 0,
+        },
+        {
+          'action': 'simpanTransaksi',
+          'id_transaksi': idTrx,
+          'nama_cabang': _namaCabang,
+          'nama_kasir': _namaKasir,
+          'metode': metode,
+          'tanggal': tanggal,
+          'waktu': waktu,
+          'items': _keranjang
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(),
+        },
+      );
+
+      // Coba kirim langsung jika online. Kalau gagal, SyncService akan retry.
       if (_urlAppScript.isNotEmpty) {
-        final sukses = await ApiService.kirimTransaksi(_urlAppScript, _namaCabang, _namaKasir, _keranjang, metode, idTransaksi: idTrx, tanggal: DateFormat('yyyy-MM-dd').format(now), waktu: DateFormat('HH:mm:ss').format(now));
-        if (sukses) await DatabaseHelper.instance.updateStatusSync(idTrx);
+        final sukses = await ApiService.kirimTransaksi(
+          _urlAppScript,
+          _namaCabang,
+          _namaKasir,
+          _keranjang,
+          metode,
+          idTransaksi: idTrx,
+          tanggal: tanggal,
+          waktu: waktu,
+        );
+        if (sukses) {
+          // Hapus operasi dari outbox + tandai transaksi sudah sync.
+          final pending = await DatabaseHelper.instance.getPendingSyncOperations();
+          for (final op in pending) {
+            if (op['transaction_id'].toString() == idTrx) {
+              await DatabaseHelper.instance.completeSyncOperation(
+                (op['id'] as num).toInt(),
+                idTrx,
+                op['action'].toString(),
+              );
+              break;
+            }
+          }
+        }
       }
+
       if (_selectedPrinter != null) {
         final tercetak = await PrinterService.cetakStruk(_selectedPrinter!, _namaCabang, _namaKasir, idTrx, _keranjang, _totalBelanja, bayar, kembali, metode);
         if (!tercetak && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaksi tersimpan, tetapi struk gagal dicetak. Periksa koneksi printer.')));
