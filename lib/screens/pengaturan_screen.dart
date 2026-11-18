@@ -80,14 +80,13 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL berhasil disimpan')));
   }
 
-  // --- FITUR TARIK DATA (HP BARU) ---
   Future<void> _tarikData() async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('url_appscript') ?? '';
     final branch = prefs.getString('nama_cabang') ?? '';
     
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL Apps Script kosong! Isi dan simpan URL terlebih dahulu.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL Apps Script kosong!')));
       return;
     }
 
@@ -114,27 +113,24 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       int count = 0;
       for (var trx in result) {
         try {
-          // Memasukkan data dari Sheet ke Database Lokal
+          String itemsJson = trx['detail_produk'] ?? '[]';
+          if (itemsJson == '' || !itemsJson.startsWith('[')) {
+            itemsJson = jsonEncode([{'nama': 'Tarik dari Sheet', 'qty': 1, 'harga': trx['total']}]);
+          }
+
           await DatabaseHelper.instance.simpanTransaksi({
             'id_transaksi': trx['id_transaksi'],
             'tanggal': trx['tanggal'],
             'waktu': trx['waktu'],
             'total': trx['total'],
             'metode': trx['metode'],
-            // items_json disimulasikan dari detail produk & qty di Sheet
-            'items_json': jsonEncode([{
-              'nama': trx['detail_produk'] ?? 'Produk', 
-              'qty': int.tryParse(trx['qty'].toString()) ?? 1, 
-              'harga': trx['total']
-            }]), 
-            'status_sync': 1, // Langsung hijau karena dari server
+            'items_json': itemsJson, 
+            'status_sync': 1,
           });
           count++;
-        } catch (_) {
-          // Abaikan jika data sudah ada (duplikat)
-        }
+        } catch (_) {}
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Berhasil menarik $count transaksi')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Berhasil menarik $count transaksi baru')));
     } else {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menarik data: ${ApiService.lastError}')));
     }
@@ -371,7 +367,6 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           const SizedBox(height: 8),
           Align(alignment: Alignment.centerRight, child: ElevatedButton(onPressed: _simpanUrl, child: const Text('Simpan URL'))),
           
-          // TOMBOL TARIK DATA
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _isLoadingTarik ? null : _tarikData,
