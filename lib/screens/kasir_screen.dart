@@ -33,7 +33,6 @@ class _KasirScreenState extends State<KasirScreen> {
     _loadData();
   }
 
-  // Refresh data saat kembali ke tab Kasir (misal setelah ubah produk di Pengaturan).
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -338,7 +337,6 @@ class _KasirScreenState extends State<KasirScreen> {
       final tanggal = DateFormat('yyyy-MM-dd').format(now);
       final waktu = DateFormat('HH:mm:ss').format(now);
 
-      // Selalu simpan lokal + enqueue ke outbox agar tahan offline / crash.
       await DatabaseHelper.instance.simpanTransaksiOffline(
         {
           'id_transaksi': idTrx,
@@ -363,7 +361,6 @@ class _KasirScreenState extends State<KasirScreen> {
         },
       );
 
-      // Coba kirim langsung jika online. Kalau gagal, SyncService akan retry.
       if (_urlAppScript.isNotEmpty) {
         final sukses = await ApiService.kirimTransaksi(
           _urlAppScript,
@@ -376,7 +373,6 @@ class _KasirScreenState extends State<KasirScreen> {
           waktu: waktu,
         );
         if (sukses) {
-          // Hapus operasi dari outbox + tandai transaksi sudah sync.
           final pending = await DatabaseHelper.instance.getPendingSyncOperations();
           for (final op in pending) {
             if (op['transaction_id'].toString() == idTrx) {
@@ -419,71 +415,92 @@ class _KasirScreenState extends State<KasirScreen> {
           return Padding(padding: const EdgeInsets.only(right: 12), child: ChoiceChip(label: Text(kat), selected: active, onSelected: (_) => setState(() => _kategoriAktif = kat), selectedColor: const Color(0xFFFFF0F0), labelStyle: TextStyle(color: active ? const Color(0xFFD32F2F) : Colors.black87, fontWeight: FontWeight.bold)));
         }).toList())),
         Expanded(child: GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.1, crossAxisSpacing: 12, mainAxisSpacing: 12),
+          padding: const EdgeInsets.all(12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, 
+            childAspectRatio: 0.75, // Kartu lebih tinggi
+            crossAxisSpacing: 12, 
+            mainAxisSpacing: 12
+          ),
           itemCount: produkTampil.length,
           itemBuilder: (context, index) {
             final produk = produkTampil[index];
+            final isGambarKosong = produk['gambar'] == null || produk['gambar'] == '';
+
             return InkWell(
               onTap: () => _tambahKeKeranjang(produk),
               borderRadius: BorderRadius.circular(12),
               child: Card(
                 elevation: 2,
+                clipBehavior: Clip.antiAlias, // Agar sudut gambar melengkung
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // --- BAGIAN GAMBAR YANG DIPERBAIKI ---
-                      if (produk['gambar'] != null && produk['gambar'] != '')
-                        Expanded(
-                          child: Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(produk['gambar']),
-                                fit: BoxFit.cover,
-                                alignment: Alignment.center,
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const SizedBox(height: 50), 
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 1. GAMBAR FULL (Mentok ke seluruh kartu)
+                    if (!isGambarKosong)
+                      Image.file(
+                        File(produk['gambar']),
+                        fit: BoxFit.cover,
+                      )
+                    else
+                      Container(color: const Color(0xFFFFF5F5)), // Warna dasar jika tak ada gambar
 
-                      // --- TEKS & HARGA ---
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            produk['nama'],
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _currencyFormat.format(produk['harga']),
-                                style: const TextStyle(
-                                  color: Color(0xFFD32F2F),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const Icon(Icons.add_circle, color: Color(0xFFD32F2F), size: 20),
+                    // 2. GRADASI HITAM & TEKS (Menimpa gambar)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(12, 30, 12, 12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              isGambarKosong ? const Color(0xFFFFF5F5).withOpacity(0.0) : Colors.black.withOpacity(0.85), // Gradasi hitam
                             ],
                           ),
-                        ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              produk['nama'],
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 14, 
+                                color: isGambarKosong ? Colors.black : Colors.white // Teks hitam jika no image
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _currencyFormat.format(produk['harga']),
+                                  style: TextStyle(
+                                    color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.add_circle, 
+                                  color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white, 
+                                  size: 24
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             );
