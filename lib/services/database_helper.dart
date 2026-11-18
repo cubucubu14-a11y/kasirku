@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -17,24 +16,12 @@ class DatabaseHelper {
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    return openDatabase(
-      join(dbPath, filePath),
-      version: 3,
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
-    );
+    return openDatabase(join(dbPath, filePath), version: 3, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
   Future<void> _createDB(Database db, int version) async {
-    await db.execute('''CREATE TABLE produk (
-      id TEXT PRIMARY KEY, nama TEXT NOT NULL, harga INTEGER NOT NULL,
-      kategori TEXT NOT NULL, gambar TEXT DEFAULT ''
-    )''');
-    await db.execute('''CREATE TABLE transaksi (
-      id_transaksi TEXT PRIMARY KEY, tanggal TEXT NOT NULL, waktu TEXT NOT NULL,
-      total INTEGER NOT NULL, items_json TEXT NOT NULL,
-      status_sync INTEGER NOT NULL, metode TEXT DEFAULT 'Tunai'
-    )''');
+    await db.execute('''CREATE TABLE produk (id TEXT PRIMARY KEY, nama TEXT NOT NULL, harga INTEGER NOT NULL, kategori TEXT NOT NULL, gambar TEXT DEFAULT '')''');
+    await db.execute('''CREATE TABLE transaksi (id_transaksi TEXT PRIMARY KEY, tanggal TEXT NOT NULL, waktu TEXT NOT NULL, total INTEGER NOT NULL, items_json TEXT NOT NULL, status_sync INTEGER NOT NULL, metode TEXT DEFAULT 'Tunai')''');
     await _createSyncQueue(db);
     await _seedProducts(db);
   }
@@ -48,13 +35,7 @@ class DatabaseHelper {
   }
 
   Future<void> _createSyncQueue(DatabaseExecutor db) async {
-    await db.execute('''CREATE TABLE IF NOT EXISTS sync_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      transaction_id TEXT NOT NULL UNIQUE,
-      action TEXT NOT NULL,
-      payload_json TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS sync_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, transaction_id TEXT NOT NULL UNIQUE, action TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)''');
   }
 
   Future<void> _seedProducts(DatabaseExecutor db) async {
@@ -68,7 +49,6 @@ class DatabaseHelper {
   Future<int> tambahProduk(Map<String, dynamic> data) async => (await database).insert('produk', data);
   Future<int> editProduk(Map<String, dynamic> data) async => (await database).update('produk', data, where: 'id = ?', whereArgs: [data['id']]);
   Future<int> hapusProduk(String id) async => (await database).delete('produk', where: 'id = ?', whereArgs: [id]);
-
   Future<int> simpanTransaksi(Map<String, dynamic> trx) async => (await database).insert('transaksi', trx);
 
   Future<void> simpanTransaksiOffline(Map<String, dynamic> trx, Map<String, dynamic> payload) async {
@@ -99,22 +79,12 @@ class DatabaseHelper {
   }
 
   Future<void> _queue(DatabaseExecutor db, String id, String action, Map<String, dynamic> payload) async {
-    await db.insert('sync_queue', {
-      'transaction_id': id,
-      'action': action,
-      'payload_json': jsonEncode(payload),
-      'created_at': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('sync_queue', {'transaction_id': id, 'action': action, 'payload_json': jsonEncode(payload), 'created_at': DateTime.now().toIso8601String()}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> enqueueSyncOperation({required String id, required String action, required Map<String, dynamic> payload, bool replace = true}) async {
     final db = await database;
-    await db.insert('sync_queue', {
-      'transaction_id': id,
-      'action': action,
-      'payload_json': jsonEncode(payload),
-      'created_at': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: replace ? ConflictAlgorithm.replace : ConflictAlgorithm.ignore);
+    await db.insert('sync_queue', {'transaction_id': id, 'action': action, 'payload_json': jsonEncode(payload), 'created_at': DateTime.now().toIso8601String()}, conflictAlgorithm: replace ? ConflictAlgorithm.replace : ConflictAlgorithm.ignore);
   }
 
   Future<List<Map<String, dynamic>>> getPendingSyncOperations() async => (await database).query('sync_queue', orderBy: 'created_at ASC');
@@ -123,23 +93,29 @@ class DatabaseHelper {
     final db = await database;
     await db.transaction((txn) async {
       final removed = await txn.delete('sync_queue', where: 'id = ?', whereArgs: [queueId]);
-      if (removed > 0 && action == 'upsert') {
-        await txn.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [transactionId]);
-      }
+      if (removed > 0 && action == 'upsert') await txn.update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [transactionId]);
     });
   }
 
   Future<List<Map<String, dynamic>>> getTransaksi({String? filterTanggal}) async {
     final db = await database;
-    if (filterTanggal != null && filterTanggal.isNotEmpty) {
-      return db.query('transaksi', where: 'tanggal LIKE ?', whereArgs: ['$filterTanggal%'], orderBy: 'tanggal DESC, waktu DESC');
-    }
+    if (filterTanggal != null && filterTanggal.isNotEmpty) return db.query('transaksi', where: 'tanggal LIKE ?', whereArgs: ['$filterTanggal%'], orderBy: 'tanggal DESC, waktu DESC');
     return db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
   }
 
   Future<List<Map<String, dynamic>>> getTransaksiBelumSync() async => (await database).query('transaksi', where: 'status_sync = ?', whereArgs: [0], orderBy: 'tanggal ASC, waktu ASC');
   Future<int> updateStatusSync(String id) async => (await database).update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [id]);
   Future<int> updateStatusSyncPending(String id) async => (await database).update('transaksi', {'status_sync': 0}, where: 'id_transaksi = ?', whereArgs: [id]);
-  Future<int> hapusTransaksi(String id) async => (await database).delete('transaksi', where: 'id_transaksi = ?', whereArgs: [id]);
+  
+  // PERBAIKAN FASE 3: Hapus transaksi + hapus antrean
+  Future<int> hapusTransaksi(String id) async {
+    final db = await database;
+    return await db.transaction((txn) async {
+      final res = await txn.delete('transaksi', where: 'id_transaksi = ?', whereArgs: [id]);
+      await txn.delete('sync_queue', where: 'transaction_id = ?', whereArgs: [id]);
+      return res;
+    });
+  }
+
   Future<int> voidTransaksiLokal(String id) async => (await database).update('transaksi', {'status_sync': 2}, where: 'id_transaksi = ?', whereArgs: [id]);
 }
