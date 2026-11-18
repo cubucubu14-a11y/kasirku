@@ -424,14 +424,69 @@ class _KasirScreenState extends State<KasirScreen> {
           itemCount: produkTampil.length,
           itemBuilder: (context, index) {
             final produk = produkTampil[index];
-            return InkWell(onTap: () => _tambahKeKeranjang(produk), borderRadius: BorderRadius.circular(12), child: Card(
-              elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                if (produk['gambar'] != null && produk['gambar'] != '') ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(produk['gambar']), height: 50, width: double.infinity, fit: BoxFit.cover)) else const SizedBox(height: 50),
-                Text(produk['nama'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_currencyFormat.format(produk['harga']), style: const TextStyle(color: Color(0xFFD32F2F), fontWeight: FontWeight.bold, fontSize: 13)), const Icon(Icons.add_circle, color: Color(0xFFD32F2F), size: 20)]),
-              ])),
-            ));
+            return InkWell(
+              onTap: () => _tambahKeKeranjang(produk),
+              borderRadius: BorderRadius.circular(12),
+              child: Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // --- BAGIAN GAMBAR YANG DIPERBAIKI ---
+                      if (produk['gambar'] != null && produk['gambar'] != '')
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                File(produk['gambar']),
+                                fit: BoxFit.cover,
+                                alignment: Alignment.center,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        const SizedBox(height: 50), 
+
+                      // --- TEKS & HARGA ---
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            produk['nama'],
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _currencyFormat.format(produk['harga']),
+                                style: const TextStyle(
+                                  color: Color(0xFFD32F2F),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Icon(Icons.add_circle, color: Color(0xFFD32F2F), size: 20),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
           },
         )),
       ]),
