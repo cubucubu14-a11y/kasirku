@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import '../services/api_service.dart';
 import '../services/database_helper.dart';
 import '../services/printer_service.dart';
 import 'setup_screen.dart';
@@ -21,6 +23,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   List<BluetoothDevice> _printers = [];
   String? _selectedPrinterAddress;
   bool _loadingPrinters = false;
+  bool _isLoadingTarik = false;
 
   @override
   void initState() {
@@ -77,6 +80,66 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL berhasil disimpan')));
   }
 
+  // --- FITUR TARIK DATA (HP BARU) ---
+  Future<void> _tarikData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('url_appscript') ?? '';
+    final branch = prefs.getString('nama_cabang') ?? '';
+    
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL Apps Script kosong! Isi dan simpan URL terlebih dahulu.')));
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tarik Semua Data?'),
+        content: const Text('Data dari Google Sheets akan dimasukkan ke HP. Proses ini mungkin memakan waktu.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Tarik')),
+        ],
+      ),
+    ) ?? false;
+    if (!confirm) return;
+
+    setState(() => _isLoadingTarik = true);
+    final result = await ApiService.tarikSemuaData(url, branch);
+    
+    if (!mounted) return;
+    setState(() => _isLoadingTarik = false);
+
+    if (result != null) {
+      int count = 0;
+      for (var trx in result) {
+        try {
+          // Memasukkan data dari Sheet ke Database Lokal
+          await DatabaseHelper.instance.simpanTransaksi({
+            'id_transaksi': trx['id_transaksi'],
+            'tanggal': trx['tanggal'],
+            'waktu': trx['waktu'],
+            'total': trx['total'],
+            'metode': trx['metode'],
+            // items_json disimulasikan dari detail produk & qty di Sheet
+            'items_json': jsonEncode([{
+              'nama': trx['detail_produk'] ?? 'Produk', 
+              'qty': int.tryParse(trx['qty'].toString()) ?? 1, 
+              'harga': trx['total']
+            }]), 
+            'status_sync': 1, // Langsung hijau karena dari server
+          });
+          count++;
+        } catch (_) {
+          // Abaikan jika data sudah ada (duplikat)
+        }
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Berhasil menarik $count transaksi')));
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menarik data: ${ApiService.lastError}')));
+    }
+  }
+
   void _editInfoTokoDialog() {
     final pinC = TextEditingController();
     final kasirC = TextEditingController(text: _namaKasir);
@@ -114,10 +177,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           ),
         ],
       ),
-    ).whenComplete(() {
-      // Dispose setelah dialog tertutup sepenuhnya.
-      pinC.dispose();
-    });
+    ).whenComplete(() => pinC.dispose());
   }
 
   void _showFormEditToko(TextEditingController kasirC, TextEditingController cabangC) {
@@ -310,6 +370,16 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           TextField(controller: _urlController, decoration: const InputDecoration(labelText: 'URL Web App (/exec)', border: OutlineInputBorder())),
           const SizedBox(height: 8),
           Align(alignment: Alignment.centerRight, child: ElevatedButton(onPressed: _simpanUrl, child: const Text('Simpan URL'))),
+          
+          // TOMBOL TARIK DATA
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _isLoadingTarik ? null : _tarikData,
+            icon: _isLoadingTarik ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.download),
+            label: const Text('Tarik Data dari Server (HP Baru)'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), minimumSize: const Size(double.infinity, 0)),
+          ),
+          
           const Divider(height: 32),
           ElevatedButton.icon(
             onPressed: () async {
