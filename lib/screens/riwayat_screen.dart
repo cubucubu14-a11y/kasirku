@@ -119,6 +119,28 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     }
   }
 
+  Future<void> _paksaHijau() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paksa Sinkron (Hijau)?'),
+        content: const Text('Fitur ini akan mengubah status semua transaksi Oranye menjadi Hijau. Gunakan HANYA jika kamu yakin data transaksi tersebut sudah masuk ke Google Sheets.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Paksa Hijau')),
+        ],
+      ),
+    ) ?? false;
+    if (!confirm) return;
+
+    final db = await DatabaseHelper.instance.database;
+    await db.update('transaksi', {'status_sync': 1}, where: 'status_sync = ?', whereArgs: [0]);
+    await db.delete('sync_queue');
+    
+    await _loadRiwayat();
+    _snack('Status transaksi berhasil dipaksa menjadi Hijau');
+  }
+
   Future<void> _hapusZombie(String id) async {
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Hapus Data Zombie?'),
@@ -142,10 +164,15 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     final data = await ApiService.tarikTransaksi(url, branch, id);
     if (data == null) { _snack('Gagal menarik data: ${ApiService.lastError}'); return; }
 
+    String itemsJson = data['detail_produk']?.toString() ?? '[]';
+    if (itemsJson == '' || !itemsJson.startsWith('[')) {
+      itemsJson = jsonEncode([{'nama': 'Tarik dari Sheet', 'qty': 1, 'harga': data['total']}]);
+    }
+
     await DatabaseHelper.instance.simpanTransaksi({
       'id_transaksi': data['id'], 'tanggal': data['tanggal'], 'waktu': data['waktu'],
       'total': data['total'], 'metode': data['metode'],
-      'items_json': jsonEncode([{'nama': 'Tarik dari Sheet', 'qty': 1, 'harga': data['total']}]), 
+      'items_json': itemsJson, 
       'status_sync': 1,
     });
     _snack('Transaksi $id berhasil ditarik ke HP');
@@ -351,55 +378,63 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       appBar: AppBar(
         title: const Text('Riwayat Penjualan'), backgroundColor: const Color(0xFFD32F2F), foregroundColor: Colors.white,
         actions: [
-          if (_sedangSinkron) const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
-          else IconButton(icon: const Icon(Icons.cloud_sync), tooltip: 'Sinkron transaksi', onPressed: _sinkronSemua),
+          if (_sedangSinkron) 
+            const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
+          else ...[
+            IconButton(icon: const Icon(Icons.cloud_sync), tooltip: 'Sinkron transaksi', onPressed: _sinkronSemua),
+            PopupMenuButton<String>(
+              onSelected: (value) { if (value == 'paksa_hijau') _paksaHijau(); },
+              itemBuilder: (context) => [const PopupMenuItem(value: 'paksa_hijau', child: Text('Paksa Sinkron (Hijau)'))],
+            ),
+          ]
         ],
       ),
       body: Column(
         children: [
           Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-  child: Row(
-    children: [
-      IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: const Icon(Icons.chevron_left),
-        onPressed: () => _geserTanggal(-1),
-      ),
-      Expanded(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ChoiceChip(
-              label: const Text('Hari Ini', style: TextStyle(fontSize: 12)),
-              selected: _filterAktif == 'Hari Ini',
-              onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); },
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () => _geserTanggal(-1),
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Hari Ini', style: TextStyle(fontSize: 12)),
+                        selected: _filterAktif == 'Hari Ini',
+                        onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); },
+                      ),
+                      const SizedBox(width: 4),
+                      ChoiceChip(
+                        label: const Text('Bulan Ini', style: TextStyle(fontSize: 12)),
+                        selected: _filterAktif == 'Bulan Ini',
+                        onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); },
+                      ),
+                      const SizedBox(width: 4),
+                      ChoiceChip(
+                        label: const Text('Custom', style: TextStyle(fontSize: 12)),
+                        selected: _filterAktif == 'Custom',
+                        onSelected: (_) { setState(() => _filterAktif = 'Custom'); _loadRiwayat(); },
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () => _geserTanggal(1),
+                ),
+              ],
             ),
-            const SizedBox(width: 4),
-            ChoiceChip(
-              label: const Text('Bulan Ini', style: TextStyle(fontSize: 12)),
-              selected: _filterAktif == 'Bulan Ini',
-              onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); },
-            ),
-            const SizedBox(width: 4),
-            ChoiceChip(
-              label: const Text('Custom', style: TextStyle(fontSize: 12)),
-              selected: _filterAktif == 'Custom',
-              onSelected: (_) { setState(() => _filterAktif = 'Custom'); _loadRiwayat(); },
-            ),
-          ],
-        ),
-      ),
-      IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: const Icon(Icons.chevron_right),
-        onPressed: () => _geserTanggal(1),
-      ),
-    ],
-  ),
-),   
+          ),
+          
           if (_filterAktif == 'Hari Ini')
             Text('Tanggal: ${DateFormat('dd MMM yyyy').format(_selectedDate)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
 
