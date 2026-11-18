@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/api_service.dart';
 import '../services/database_helper.dart';
 import '../services/sync_service.dart';
@@ -331,6 +333,8 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     final status = (trx['status_sync'] as num).toInt();
     final isSynced = status == 1;
     final id = trx['id_transaksi'].toString();
+    final isTunai = (trx['metode']?.toString().toLowerCase() ?? 'tunai') == 'tunai';
+    
     String formattedDate = '';
     try {
       final date = DateTime.parse('${trx['tanggal']} ${trx['waktu']}');
@@ -354,32 +358,34 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 const SizedBox(height: 4),
                 Text(id, style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
               ])),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-  Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(isSynced ? Icons.check_circle : Icons.cloud_upload, color: isSynced ? Colors.green : Colors.orange, size: 18),
-      const SizedBox(width: 6),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: (trx['metode']?.toString().toLowerCase() == 'tunai') ? Colors.green[100] : Colors.blue[100],
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          trx['metode']?.toString().toUpperCase() ?? 'TUNAI',
-          style: TextStyle(
-            fontSize: 10, 
-            fontWeight: FontWeight.bold,
-            color: (trx['metode']?.toString().toLowerCase() == 'tunai') ? Colors.green[800] : Colors.blue[800],
-          ),
-        ),
-      ),
-    ],
-  ),
-  const SizedBox(height: 4),
-  Text(formattedDate, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-]),
+              
+              Row(children: [
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(isSynced ? Icons.check_circle : Icons.cloud_upload, color: isSynced ? Colors.green : Colors.orange, size: 18),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isTunai ? Colors.green[100] : Colors.blue[100],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isTunai ? 'TUNAI' : 'QRIS',
+                          style: TextStyle(
+                            fontSize: 10, 
+                            fontWeight: FontWeight.bold,
+                            color: isTunai ? Colors.green[800] : Colors.blue[800],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(formattedDate, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                ]),
                 PopupMenuButton<String>(icon: const Icon(Icons.more_vert, color: Colors.grey), onSelected: (action) { if (action == 'edit') _editTransaksi(trx); if (action == 'delete') _hapusTransaksi(trx); }, itemBuilder: (context) => const [PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: Icon(Icons.edit), title: Text('Edit'))), PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Hapus')))]),
               ]),
             ],
