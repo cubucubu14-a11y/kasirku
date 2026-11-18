@@ -138,6 +138,11 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      # --- REVISI: TAMBAHKAN STEP INI UNTUK GENERATE IKON ---
+      - name: Generate App Icon
+        run: dart run flutter_launcher_icons
+      # ------------------------------------------------------
+
       - name: Patch flutter_bluetooth_serial
         run: |
           F=$(find $HOME/.pub-cache -path "*flutter_bluetooth_serial-*/android/build.gradle" | head -1)
