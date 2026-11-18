@@ -358,20 +358,48 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(children: [
-              IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _geserTanggal(-1)),
-              Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                ChoiceChip(label: const Text('Hari Ini'), selected: _filterAktif == 'Hari Ini', onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); }),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Bulan Ini'), selected: _filterAktif == 'Bulan Ini', onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); }),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Custom'), selected: _filterAktif == 'Custom', onSelected: (_) { setState(() => _filterAktif = 'Custom'); _loadRiwayat(); }),
-              ]))),
-              IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _geserTanggal(1)),
-            ]),
-          ),
-          
+  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+  child: Row(
+    children: [
+      IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: const Icon(Icons.chevron_left),
+        onPressed: () => _geserTanggal(-1),
+      ),
+      Expanded(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ChoiceChip(
+              label: const Text('Hari Ini', style: TextStyle(fontSize: 12)),
+              selected: _filterAktif == 'Hari Ini',
+              onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); },
+            ),
+            const SizedBox(width: 4),
+            ChoiceChip(
+              label: const Text('Bulan Ini', style: TextStyle(fontSize: 12)),
+              selected: _filterAktif == 'Bulan Ini',
+              onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); },
+            ),
+            const SizedBox(width: 4),
+            ChoiceChip(
+              label: const Text('Custom', style: TextStyle(fontSize: 12)),
+              selected: _filterAktif == 'Custom',
+              onSelected: (_) { setState(() => _filterAktif = 'Custom'); _loadRiwayat(); },
+            ),
+          ],
+        ),
+      ),
+      IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: const Icon(Icons.chevron_right),
+        onPressed: () => _geserTanggal(1),
+      ),
+    ],
+  ),
+),   
           if (_filterAktif == 'Hari Ini')
             Text('Tanggal: ${DateFormat('dd MMM yyyy').format(_selectedDate)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
 
