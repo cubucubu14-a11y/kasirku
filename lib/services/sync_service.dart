@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'api_service.dart';
 import 'database_helper.dart';
 
@@ -19,14 +21,19 @@ class SyncService with WidgetsBindingObserver {
     if (_initialized) return;
     _initialized = true;
     WidgetsBinding.instance.addObserver(this);
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
       if (_hasNetwork(results)) unawaited(syncPending());
     });
-    _retryTimer = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(_checkAndSync()));
+    _retryTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(_checkAndSync()),
+    );
     await _checkAndSync();
   }
 
-  bool _hasNetwork(List<ConnectivityResult> results) => results.any((r) => r != ConnectivityResult.none);
+  bool _hasNetwork(List<ConnectivityResult> results) =>
+      results.any((r) => r != ConnectivityResult.none);
 
   Future<void> _checkAndSync() async {
     try {
@@ -37,16 +44,9 @@ class SyncService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_checkAndSync());
-  }
-
-  Map<String, dynamic> _payloadForLegacy(Map<String, dynamic> trx, String branch, String cashier) {
-    final items = (jsonDecode(trx['items_json']) as List<dynamic>).map((item) => Map<String, dynamic>.from(item as Map)).toList();
-    return {
-      'action': 'simpanTransaksi', 'id_transaksi': trx['id_transaksi'].toString(), 'nama_cabang': branch,
-      'nama_kasir': cashier, 'tanggal': trx['tanggal'].toString(), 'waktu': trx['waktu'].toString(),
-      'metode': trx['metode']?.toString() ?? 'Tunai', 'items': items,
-    };
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_checkAndSync());
+    }
   }
 
   Future<Map<String, int>> syncPending({bool force = false, String? filterTanggal}) async {
@@ -65,55 +65,119 @@ class SyncService with WidgetsBindingObserver {
       final legacy = await DatabaseHelper.instance.getTransaksiBelumSync();
       for (final trx in legacy) {
         try {
-          await DatabaseHelper.instance.enqueueSyncOperation(id: trx['id_transaksi'].toString(), action: 'upsert', payload: _payloadForLegacy(trx, branch, cashier), replace: false);
-        } catch (_) { failureCount++; }
+          List<dynamic> items = [];
+          try {
+            items = jsonDecode(trx['items_json'].toString()) as List<dynamic>;
+          } catch (_) {}
+
+          await DatabaseHelper.instance.enqueueSyncOperation(
+            id: trx['id_transaksi'].toString(),
+            action: 'upsert',
+            payload: {
+              'action': 'simpanTransaksi',
+              'id_transaksi': trx['id_transaksi'].toString(),
+              'nama_cabang': branch,
+              'nama_kasir': cashier,
+              'tanggal': trx['tanggal'].toString(),
+              'waktu': trx['waktu'].toString(),
+              'metode': trx['metode']?.toString() ?? 'Tunai',
+              'items': items
+                  .map((item) => Map<String, dynamic>.from(item as Map))
+                  .toList(),
+            },
+            replace: false,
+          );
+        } catch (_) {
+          failureCount++;
+        }
       }
 
-      final operations = await DatabaseHelper.instance.getPendingSyncOperations();
+      final operations =
+          await DatabaseHelper.instance.getPendingSyncOperations();
       for (final operation in operations) {
         final id = operation['transaction_id'].toString();
         final action = operation['action'].toString();
+
         try {
-          final payload = Map<String, dynamic>.from(jsonDecode(operation['payload_json']) as Map);
+          final payload = Map<String, dynamic>.from(
+              jsonDecode(operation['payload_json']) as Map);
           bool ok;
+
           if (action == 'delete') {
-            ok = await ApiService.hapusTransaksi(url: url, namaCabang: payload['nama_cabang']?.toString() ?? branch, idTransaksi: id);
+            ok = await ApiService.hapusTransaksi(
+              url: url,
+              namaCabang:
+                  payload['nama_cabang']?.toString() ?? branch,
+              idTransaksi: id,
+            );
           } else if (action == 'edit') {
-            ok = await ApiService.editTransaksi(url: url, namaCabang: payload['nama_cabang']?.toString() ?? branch, idTransaksi: id, tanggal: payload['tanggal']?.toString() ?? '', waktu: payload['waktu']?.toString() ?? '', total: (payload['total'] as num?)?.toInt() ?? 0, metode: payload['metode']?.toString() ?? 'Tunai');
+            final items = (payload['items'] as List<dynamic>? ?? [])
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+            ok = await ApiService.editTransaksi(
+              url: url,
+              namaCabang:
+                  payload['nama_cabang']?.toString() ?? branch,
+              idTransaksi: id,
+              tanggal: payload['tanggal']?.toString() ?? '',
+              waktu: payload['waktu']?.toString() ?? '',
+              total: (payload['total'] as num?)?.toInt() ?? 0,
+              metode: payload['metode']?.toString() ?? 'Tunai',
+              items: items,
+            );
           } else {
-            final decodedItems = (payload['items'] as List<dynamic>? ?? []).map((item) => Map<String, dynamic>.from(item as Map)).toList();
-            ok = await ApiService.kirimTransaksi(url, payload['nama_cabang']?.toString() ?? branch, payload['nama_kasir']?.toString() ?? cashier, decodedItems, payload['metode']?.toString() ?? 'Tunai', idTransaksi: id, tanggal: payload['tanggal']?.toString(), waktu: payload['waktu']?.toString());
+            final items = (payload['items'] as List<dynamic>? ?? [])
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+            ok = await ApiService.kirimTransaksi(
+              url,
+              payload['nama_cabang']?.toString() ?? branch,
+              payload['nama_kasir']?.toString() ?? cashier,
+              items,
+              payload['metode']?.toString() ?? 'Tunai',
+              idTransaksi: id,
+              tanggal: payload['tanggal']?.toString(),
+              waktu: payload['waktu']?.toString(),
+            );
           }
+
           if (ok) {
-            await DatabaseHelper.instance.completeSyncOperation((operation['id'] as num).toInt(), id, action);
+            await DatabaseHelper.instance.completeSyncOperation(
+              (operation['id'] as num).toInt(),
+              id,
+              action,
+            );
             successCount++;
-          } else { failureCount++; }
-        } catch (_) { failureCount++; }
+          } else {
+            failureCount++;
+          }
+        } catch (_) {
+          failureCount++;
+        }
       }
     } finally {
       _syncing = false;
     }
+
     return {'success': successCount, 'failed': failureCount};
   }
 
-  // FUNGSI FASE 4: Cek Zombie
   Future<List<String>> cekDataZombie({required String filterTanggal}) async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('url_appscript') ?? '';
     final branch = prefs.getString('nama_cabang') ?? '';
     if (url.isEmpty) return [];
 
-    final serverIds = await ApiService.getDataIdsForDate(url, branch, filterTanggal);
+    final serverIds =
+        await ApiService.getDataIdsForDate(url, branch, filterTanggal);
     if (serverIds == null) return [];
 
-    final localTrx = await DatabaseHelper.instance.getTransaksi(filterTanggal: filterTanggal);
-    final localIds = localTrx.map((e) => e['id_transaksi'].toString()).toSet();
+    final localTrx = await DatabaseHelper.instance
+        .getTransaksi(filterTanggal: filterTanggal);
+    final localIds =
+        localTrx.map((e) => e['id_transaksi'].toString()).toSet();
 
-    final zombies = <String>[];
-    for (final id in serverIds) {
-      if (!localIds.contains(id)) zombies.add(id);
-    }
-    return zombies;
+    return serverIds.where((id) => !localIds.contains(id)).toList();
   }
 
   void dispose() {
