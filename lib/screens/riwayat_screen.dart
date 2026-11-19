@@ -283,7 +283,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 await DatabaseHelper.instance.editTransaksi({'id_transaksi': id, 'tanggal': tanggal, 'waktu': waktu, 'total': newTotal, 'metode': normalizedMethod, 'items_json': jsonEncode(resultItems), 'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0});
                 final wasSynced = (trx['status_sync'] as num).toInt() == 1;
                 if (wasSynced && url.isNotEmpty) {
-                  final serverOk = await ApiService.editTransaksi(url: url, namaCabang: branch, idTransaksi: id, tanggal: tanggal, waktu: waktu, total: newTotal, metode: normalizedMethod);
+                  final serverOk = await ApiService.editTransaksi(url: url, namaCabang: branch, idTransaksi: id, tanggal: tanggal, waktu: waktu, total: newTotal, metode: normalizedMethod, items: resultItems);
                   if (!serverOk) {
                     await DatabaseHelper.instance.enqueueSyncOperation(id: id, action: 'upsert', payload: {'action': 'simpanTransaksi', 'id_transaksi': id, 'nama_cabang': branch, 'nama_kasir': kasir, 'metode': normalizedMethod, 'tanggal': tanggal, 'waktu': waktu, 'items': resultItems});
                     await DatabaseHelper.instance.updateStatusSyncPending(id);
