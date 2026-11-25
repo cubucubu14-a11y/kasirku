@@ -138,39 +138,36 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      # --- REVISI: TAMBAHKAN STEP INI UNTUK GENERATE IKON ---
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
-      # ------------------------------------------------------
 
       - name: Patch flutter_bluetooth_serial
         run: |
-          F=$(find $HOME/.pub-cache -path "*flutter_bluetooth_serial-*/android/build.gradle" | head -1)
+          # PERBAIKAN: Mengabaikan folder 'example' agar tidak salah sasaran
+          F=$(find $HOME/.pub-cache -path "*flutter_bluetooth_serial-*/android/build.gradle" ! -path "*/example/*" | head -1)
+          
           if [ -z "$F" ]; then
             echo "Plugin flutter_bluetooth_serial tidak ditemukan di pub-cache"
             exit 1
           fi
-          echo "Patching $F"
+          echo "Patching file: $F"
 
-          # 1. Tambahkan namespace (wajib di AGP 8+)
+          # 1. Tambahkan namespace
           if ! grep -q "namespace" "$F"; then
             sed -i '0,/^android {/s//android {\n    namespace "io.github.edufolly.flutterbluetoothserial"/' "$F"
           fi
 
-          # 2. Naikkan compileSdk (mengatasi error lStar not found)
+          # 2. Naikkan compileSdk
           sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' "$F"
 
-          # 3. jcenter sudah mati, ganti ke mavenCentral
+          # 3. Ganti jcenter ke mavenCentral
           sed -i 's/jcenter()/mavenCentral()/g' "$F"
 
-          # 4. Hapus atribut package di manifest plugin (ditolak AGP 8)
+          # 4. Hapus atribut package di manifest
           M="$(dirname "$F")/src/main/AndroidManifest.xml"
           sed -i 's/ package="[^"]*"//' "$M"
 
-          echo "----- build.gradle hasil patch -----"
-          cat "$F"
-          echo "----- AndroidManifest hasil patch -----"
-          cat "$M"
+          echo "Patching berhasil!"
 
       - name: Build APK (Signed)
         run: flutter build apk --release
@@ -178,22 +175,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
+             build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kasirku-apk-final
-          path: build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
+          path: build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v5.0.0-final
-          name: "Kasirku v5.0.0 - Full Release"
-          body: "Rilis lengkap: Pembayaran Tunai/Kris, Kembalian, Cetak Printer, PIN Toko, Galeri Produk, dan Filter Riwayat."
-          files: build/app/outputs/flutter-apk/kasirku-v5.0.0-final.apk
+          tag_name: v5.2.0-final
+          name: "Kasirku v5.2.0 - Final Release"
+          body: "Rilis perbaikan patch library dan fitur edit tanggal."
+          files: build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
           draft: false
           prerelease: false
         env:
