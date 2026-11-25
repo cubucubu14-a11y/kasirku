@@ -7,6 +7,7 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import '../services/api_service.dart';
 import '../services/database_helper.dart';
 import '../services/printer_service.dart';
+import '../utils/product_image_storage.dart'; // PERBAIKAN BUG 3: Import fungsi simpan gambar
 import 'setup_screen.dart';
 
 class PengaturanScreen extends StatefulWidget {
@@ -225,14 +226,22 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
                   Image.file(File(gambarPath!), height: 100, width: 100, fit: BoxFit.cover)
                 else
                   Container(height: 100, width: 100, color: Colors.grey[300], child: const Icon(Icons.image, size: 50)),
+                
+                // PERBAIKAN BUG 3: Simpan gambar permanen
                 TextButton.icon(
                   onPressed: () async {
                     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                    if (picked != null) setModalState(() => gambarPath = picked.path);
+                    if (picked != null) {
+                      final permanentPath = await saveProductImage(picked.path);
+                      if (permanentPath != null) {
+                        setModalState(() => gambarPath = permanentPath);
+                      }
+                    }
                   },
                   icon: const Icon(Icons.photo),
                   label: const Text('Pilih Gambar'),
                 ),
+                
                 TextField(controller: namaC, decoration: const InputDecoration(labelText: 'Nama Produk')),
                 TextField(controller: hargaC, decoration: const InputDecoration(labelText: 'Harga (Angka)'), keyboardType: TextInputType.number),
                 TextField(controller: kategoriC, decoration: const InputDecoration(labelText: 'Kategori')),
