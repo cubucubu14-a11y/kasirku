@@ -298,7 +298,10 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       if (updatedItems == null || !mounted) return;
       await _loadRiwayat();
       _snack('Transaksi berhasil diperbarui');
-    } finally { method.dispose(); }
+    } finally { 
+      // PERBAIKAN BUG 1: Hapus method.dispose() yang bikin crash
+      // method.dispose(); 
+    }
   }
 
   Future<void> _hapusTransaksi(Map<String, dynamic> trx) async {
