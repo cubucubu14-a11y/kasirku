@@ -238,6 +238,15 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   Future<void> _editTransaksi(Map<String, dynamic> trx) async {
     final items = (jsonDecode(trx['items_json']) as List<dynamic>).map((item) => Map<String, dynamic>.from(item as Map)).toList();
     final method = ValueNotifier<String>(trx['metode']?.toString() ?? 'Tunai');
+    
+    // Variabel untuk menyimpan tanggal sementara
+    DateTime currentDate;
+    try {
+      currentDate = DateTime.parse('${trx['tanggal']} ${trx['waktu']}');
+    } catch (_) {
+      currentDate = DateTime.now();
+    }
+
     var saving = false;
 
     try {
@@ -245,9 +254,35 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
         context: context,
         builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
           int total() => items.fold<int>(0, (sum, item) => sum + ((item['harga'] as num).toInt() * (item['qty'] as num).toInt()));
+          
           return AlertDialog(
-            title: Text('Edit Transaksi ${trx['id_transaksi']}'),
+            title: Text('Edit Transaksi', style: const TextStyle(fontSize: 16)),
             content: SizedBox(width: double.maxFinite, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              
+              // Tombol Pilih Tanggal
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_today, color: Colors.blue),
+                title: const Text('Tanggal Transaksi'),
+                subtitle: Text(DateFormat('dd MMMM yyyy').format(currentDate), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+                trailing: const Icon(Icons.edit, size: 16),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: currentDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (picked != null) {
+                    setDialogState(() {
+                      currentDate = picked;
+                    });
+                  }
+                },
+              ),
+              const Divider(),
+
+              // List Produk
               ...items.asMap().entries.map((entry) {
                 final index = entry.key;
                 final item = entry.value;
@@ -263,7 +298,14 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
               const Divider(),
               Align(alignment: Alignment.centerRight, child: Text('Total: ${_currencyFormat.format(total())}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               const SizedBox(height: 8),
-              ValueListenableBuilder<String>(valueListenable: method, builder: (context, value, _) => DropdownButtonFormField<String>(value: value.toLowerCase() == 'qris' ? 'QRIS' : (value.toLowerCase() == 'kris' ? 'QRIS' : 'Tunai'), decoration: const InputDecoration(labelText: 'Metode pembayaran'), items: const [DropdownMenuItem(value: 'Tunai', child: Text('Tunai')), DropdownMenuItem(value: 'QRIS', child: Text('QRIS'))], onChanged: (v) { if (v != null) method.value = v; })),
+              
+              // Metode Pembayaran
+              ValueListenableBuilder<String>(valueListenable: method, builder: (context, value, _) => DropdownButtonFormField<String>(
+                value: value.toLowerCase() == 'qris' ? 'QRIS' : (value.toLowerCase() == 'kris' ? 'QRIS' : 'Tunai'), 
+                decoration: const InputDecoration(labelText: 'Metode pembayaran'), 
+                items: const [DropdownMenuItem(value: 'Tunai', child: Text('Tunai')), DropdownMenuItem(value: 'QRIS', child: Text('QRIS'))], 
+                onChanged: (v) { if (v != null) method.value = v; }
+              )),
             ]))),
             actions: [
               TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text('Batal')),
@@ -277,15 +319,52 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 final normalizedMethod = method.value == 'Kris' ? 'QRIS' : method.value;
                 final newTotal = total();
                 final resultItems = items.map((item) => Map<String, dynamic>.from(item)).toList();
-                final tanggal = trx['tanggal'].toString();
-                final waktu = trx['waktu'].toString();
+                
+                // Format tanggal baru, dan PAKSA JAM MENJADI 00:00:00
+                final newTanggal = DateFormat('yyyy-MM-dd').format(currentDate);
+                final newWaktu = '00:00:00'; 
 
-                await DatabaseHelper.instance.editTransaksi({'id_transaksi': id, 'tanggal': tanggal, 'waktu': waktu, 'total': newTotal, 'metode': normalizedMethod, 'items_json': jsonEncode(resultItems), 'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0});
+                // Simpan ke DB Lokal
+                await DatabaseHelper.instance.editTransaksi({
+                  'id_transaksi': id, 
+                  'tanggal': newTanggal, 
+                  'waktu': newWaktu, 
+                  'total': newTotal, 
+                  'metode': normalizedMethod, 
+                  'items_json': jsonEncode(resultItems), 
+                  'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0
+                });
+
                 final wasSynced = (trx['status_sync'] as num).toInt() == 1;
+                
+                // Jika sebelumnya sudah sinkron ke Sheet, update juga di Sheet
                 if (wasSynced && url.isNotEmpty) {
-                  final serverOk = await ApiService.editTransaksi(url: url, namaCabang: branch, idTransaksi: id, tanggal: tanggal, waktu: waktu, total: newTotal, metode: normalizedMethod, items: resultItems);
+                  final serverOk = await ApiService.editTransaksi(
+                    url: url, 
+                    namaCabang: branch, 
+                    idTransaksi: id, 
+                    tanggal: newTanggal, 
+                    waktu: newWaktu, 
+                    total: newTotal, 
+                    metode: normalizedMethod, 
+                    items: resultItems
+                  );
+                  
                   if (!serverOk) {
-                    await DatabaseHelper.instance.enqueueSyncOperation(id: id, action: 'upsert', payload: {'action': 'simpanTransaksi', 'id_transaksi': id, 'nama_cabang': branch, 'nama_kasir': kasir, 'metode': normalizedMethod, 'tanggal': tanggal, 'waktu': waktu, 'items': resultItems});
+                    await DatabaseHelper.instance.enqueueSyncOperation(
+                      id: id, 
+                      action: 'upsert', 
+                      payload: {
+                        'action': 'simpanTransaksi', 
+                        'id_transaksi': id, 
+                        'nama_cabang': branch, 
+                        'nama_kasir': kasir, 
+                        'metode': normalizedMethod, 
+                        'tanggal': newTanggal, 
+                        'waktu': newWaktu, 
+                        'items': resultItems
+                      }
+                    );
                     await DatabaseHelper.instance.updateStatusSyncPending(id);
                   }
                 }
@@ -299,8 +378,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       await _loadRiwayat();
       _snack('Transaksi berhasil diperbarui');
     } finally { 
-      // PERBAIKAN BUG 1: Hapus method.dispose() yang bikin crash
-      // method.dispose(); 
+      // Biarkan kosong agar tidak crash
     }
   }
 
