@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math'; // TAMBAHAN UNTUK RANDOM
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -276,7 +277,10 @@ class _KasirScreenState extends State<KasirScreen> {
 
   Future<void> _previewStruk(String metode, int bayar, int kembali) async {
     final now = DateTime.now();
-    final idTrx = 'TRX-${now.millisecondsSinceEpoch}';
+    // PERBAIKAN BUG 2: Menambahkan Random agar ID tidak bentrok
+    final random = Random();
+    final idTrx = 'TRX-${now.millisecondsSinceEpoch}-${random.nextInt(999)}';
+    
     final shouldComplete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
