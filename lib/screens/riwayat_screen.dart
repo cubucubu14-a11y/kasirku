@@ -102,11 +102,14 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   String get _labelHari {
-    if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
-    if (_filterAktif == 'Bulan Ini') return 'Data Bulan Ini';
-    return 'Data $_totalHariAktif Hari'; 
-  }
-
+  if (_totalHariAktif == 0) return 'Data 0 Hari';
+  
+  // Jika filter Hari Ini, kita bisa tampilkan "Data Hari Ini"
+  if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
+  
+  // Untuk Bulan Ini dan Custom, tampilkan jumlah hari aktif
+  return 'Data $_totalHariAktif Hari'; 
+}
   List<Map<String, dynamic>> get _transaksiAktif => _riwayat.where((t) => (t['status_sync'] as num).toInt() != 2).toList();
   int get _totalTransaksi => _transaksiAktif.length;
   int get _totalOmset => _transaksiAktif.fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
