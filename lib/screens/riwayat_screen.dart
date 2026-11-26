@@ -19,50 +19,95 @@ class RiwayatScreen extends StatefulWidget {
 class _RiwayatScreenState extends State<RiwayatScreen> {
   List<Map<String, dynamic>> _riwayat = [];
   List<String> _zombieIds = [];
+  
   String _filterAktif = 'Hari Ini';
   DateTime _selectedDate = DateTime.now();
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  
   bool _sedangSinkron = false;
+  bool _isOwner = false;
+  
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
   @override
   void initState() {
     super.initState();
+    _checkOwner();
     _loadRiwayat();
   }
 
+  Future<void> _checkOwner() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isOwner = prefs.getBool('is_owner') ?? false;
+    });
+  }
+
   Future<void> _loadRiwayat() async {
-    String? tanggalFilter;
+    String? startFilter;
+    String? endFilter;
     final formatter = DateFormat('yyyy-MM-dd');
-    if (_filterAktif == 'Hari Ini') {
-      tanggalFilter = formatter.format(_selectedDate);
-    } else if (_filterAktif == 'Bulan Ini') {
-      tanggalFilter = formatter.format(DateTime.now()).substring(0, 7);
-    } else if (_filterAktif == 'Custom') {
-      final picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2020), lastDate: DateTime(2030));
-      if (picked == null) return;
-      _selectedDate = picked;
-      tanggalFilter = formatter.format(picked);
+
+    if (!_isOwner) {
+      _filterAktif = 'Hari Ini';
+      startFilter = formatter.format(DateTime.now());
+      endFilter = startFilter;
+    } else {
+      if (_filterAktif == 'Hari Ini') {
+        startFilter = formatter.format(_selectedDate);
+        endFilter = startFilter;
+      } else if (_filterAktif == 'Bulan Ini') {
+        final now = DateTime.now();
+        startFilter = formatter.format(DateTime(now.year, now.month, 1));
+        endFilter = formatter.format(DateTime(now.year, now.month + 1, 0));
+      } else if (_filterAktif == 'Custom') {
+        if (_customStartDate != null && _customEndDate != null) {
+          startFilter = formatter.format(_customStartDate!);
+          endFilter = formatter.format(_customEndDate!);
+        }
+      }
     }
 
-    final data = await DatabaseHelper.instance.getTransaksi(filterTanggal: tanggalFilter);
+    // Ambil data dengan filter rentang tanggal
+    final data = await DatabaseHelper.instance.getTransaksiRange(
+      startDate: startFilter,
+      endDate: endFilter,
+    );
+
     if (!mounted) return;
     setState(() {
       _riwayat = data;
       _zombieIds = [];
     });
 
-    if (tanggalFilter != null && tanggalFilter.length == 10) {
-       final zombies = await SyncService.instance.cekDataZombie(filterTanggal: tanggalFilter);
+    if (_isOwner && startFilter != null && endFilter != null && startFilter == endFilter) {
+       final zombies = await SyncService.instance.cekDataZombie(filterTanggal: startFilter);
        if (mounted) setState(() => _zombieIds = zombies);
     }
   }
 
   void _geserTanggal(int days) {
+    if (!_isOwner) return;
     setState(() {
       _filterAktif = 'Hari Ini';
       _selectedDate = _selectedDate.add(Duration(days: days));
     });
     _loadRiwayat();
+  }
+
+  // FUNGSI BARU: Hitung Hari Aktif (Hari Libur tidak dihitung)
+  int get _totalHariAktif {
+    if (_transaksiAktif.isEmpty) return 0;
+    final uniqueDates = _transaksiAktif.map((t) => t['tanggal'].toString()).toSet();
+    return uniqueDates.length;
+  }
+
+  // Teks untuk Kotak Merah
+  String get _labelHari {
+    if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
+    if (_filterAktif == 'Bulan Ini') return 'Data Bulan Ini';
+    return 'Data $_totalHariAktif Hari'; 
   }
 
   List<Map<String, dynamic>> get _transaksiAktif => _riwayat.where((t) => (t['status_sync'] as num).toInt() != 2).toList();
@@ -237,6 +282,8 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   Future<void> _editTransaksi(Map<String, dynamic> trx) async {
+    if (!_isOwner) return;
+
     final items = (jsonDecode(trx['items_json']) as List<dynamic>).map((item) => Map<String, dynamic>.from(item as Map)).toList();
     final method = ValueNotifier<String>(trx['metode']?.toString() ?? 'Tunai');
     
@@ -318,7 +365,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 final newTanggal = DateFormat('yyyy-MM-dd').format(currentDate);
                 final newWaktu = '00:00:00'; 
 
-                // 1. Simpan CEPAT ke DB Lokal (Offline First)
                 await DatabaseHelper.instance.editTransaksi({
                   'id_transaksi': id, 
                   'tanggal': newTanggal, 
@@ -329,7 +375,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                   'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0
                 });
 
-                // 2. Jika sebelumnya sudah sinkron, kirim ke antrean
                 final wasSynced = (trx['status_sync'] as num).toInt() == 1;
                 if (wasSynced && url.isNotEmpty) {
                   await DatabaseHelper.instance.enqueueSyncOperation(
@@ -348,10 +393,8 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                   );
                 }
                 
-                // 3. TUTUP DIALOG LANGSUNG
                 if (dialogContext.mounted) Navigator.pop(dialogContext, resultItems);
                 
-                // 4. Tembak ke Internet di BELAKANG LAYAR
                 if (wasSynced && url.isNotEmpty) {
                   unawaited(SyncService.instance.syncPending());
                 }
@@ -369,6 +412,8 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   Future<void> _hapusTransaksi(Map<String, dynamic> trx) async {
+    if (!_isOwner) return;
+
     final id = trx['id_transaksi'].toString();
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Hapus transaksi?'), content: const Text('Transaksi akan dihapus dari aplikasi dan Google Sheets.'),
@@ -453,7 +498,8 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                   const SizedBox(height: 4),
                   Text(formattedDate, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ]),
-                PopupMenuButton<String>(icon: const Icon(Icons.more_vert, color: Colors.grey), onSelected: (action) { if (action == 'edit') _editTransaksi(trx); if (action == 'delete') _hapusTransaksi(trx); }, itemBuilder: (context) => const [PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: Icon(Icons.edit), title: Text('Edit'))), PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Hapus')))]),
+                if (_isOwner)
+                  PopupMenuButton<String>(icon: const Icon(Icons.more_vert, color: Colors.grey), onSelected: (action) { if (action == 'edit') _editTransaksi(trx); if (action == 'delete') _hapusTransaksi(trx); }, itemBuilder: (context) => const [PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: Icon(Icons.edit), title: Text('Edit'))), PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Hapus')))]),
               ]),
             ],
           ),
@@ -475,10 +521,11 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
             const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
           else ...[
             IconButton(icon: const Icon(Icons.cloud_sync), tooltip: 'Sinkron transaksi', onPressed: _sinkronSemua),
-            PopupMenuButton<String>(
-              onSelected: (value) { if (value == 'paksa_hijau') _paksaHijau(); },
-              itemBuilder: (context) => [const PopupMenuItem(value: 'paksa_hijau', child: Text('Paksa Sinkron (Hijau)'))],
-            ),
+            if (_isOwner)
+              PopupMenuButton<String>(
+                onSelected: (value) { if (value == 'paksa_hijau') _paksaHijau(); },
+                itemBuilder: (context) => [const PopupMenuItem(value: 'paksa_hijau', child: Text('Paksa Sinkron (Hijau)'))],
+              ),
           ]
         ],
       ),
@@ -488,48 +535,69 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Row(
               children: [
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: () => _geserTanggal(-1),
-                ),
+                if (_isOwner)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () => _geserTanggal(-1),
+                  ),
                 Expanded(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Hari Ini', style: TextStyle(fontSize: 12)),
-                        selected: _filterAktif == 'Hari Ini',
-                        onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); },
-                      ),
-                      const SizedBox(width: 4),
-                      ChoiceChip(
-                        label: const Text('Bulan Ini', style: TextStyle(fontSize: 12)),
-                        selected: _filterAktif == 'Bulan Ini',
-                        onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); },
-                      ),
-                      const SizedBox(width: 4),
-                      ChoiceChip(
-                        label: const Text('Custom', style: TextStyle(fontSize: 12)),
-                        selected: _filterAktif == 'Custom',
-                        onSelected: (_) { setState(() => _filterAktif = 'Custom'); _loadRiwayat(); },
-                      ),
+                      if (_isOwner) ...[
+                        ChoiceChip(
+                          label: const Text('Hari Ini', style: TextStyle(fontSize: 12)),
+                          selected: _filterAktif == 'Hari Ini',
+                          onSelected: (_) { setState(() { _filterAktif = 'Hari Ini'; _selectedDate = DateTime.now(); }); _loadRiwayat(); },
+                        ),
+                        const SizedBox(width: 4),
+                        ChoiceChip(
+                          label: const Text('Bulan Ini', style: TextStyle(fontSize: 12)),
+                          selected: _filterAktif == 'Bulan Ini',
+                          onSelected: (_) { setState(() => _filterAktif = 'Bulan Ini'); _loadRiwayat(); },
+                        ),
+                        const SizedBox(width: 4),
+                        ChoiceChip(
+                          label: const Text('Custom', style: TextStyle(fontSize: 12)),
+                          selected: _filterAktif == 'Custom',
+                          onSelected: (_) async {
+                            final pickedStart = await showDatePicker(context: context, initialDate: _customStartDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030), helpText: 'Pilih Tanggal Mulai');
+                            if (pickedStart == null) return;
+                            
+                            final pickedEnd = await showDatePicker(context: context, initialDate: _customEndDate ?? pickedStart, firstDate: pickedStart, lastDate: DateTime(2030), helpText: 'Pilih Tanggal Selesai');
+                            if (pickedEnd == null) return;
+
+                            setState(() {
+                              _customStartDate = pickedStart;
+                              _customEndDate = pickedEnd;
+                              _filterAktif = 'Custom';
+                            });
+                            _loadRiwayat();
+                          },
+                        ),
+                      ] else ...[
+                        const Text('Transaksi Hari Ini', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                      ]
                     ],
                   ),
                 ),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: () => _geserTanggal(1),
-                ),
+                if (_isOwner)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => _geserTanggal(1),
+                  ),
               ],
             ),
           ),
           
-          if (_filterAktif == 'Hari Ini')
+          if (_filterAktif == 'Hari Ini' && _isOwner)
             Text('Tanggal: ${DateFormat('dd MMM yyyy').format(_selectedDate)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+          if (_filterAktif == 'Custom' && _customStartDate != null && _customEndDate != null)
+            Text('Rentang: ${DateFormat('dd/MM/yy').format(_customStartDate!)} - ${DateFormat('dd/MM/yy').format(_customEndDate!)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
 
           if (_zombieIds.isNotEmpty)
             Container(
@@ -561,7 +629,22 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 Row(children: [
                   const Icon(Icons.trending_up, color: Color(0xFFD32F2F)), const SizedBox(width: 10),
                   const Expanded(child: Text('Total Omset')),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12)), child: Text('$_totalTransaksi Transaksi', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54))),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12)),
+                        child: Text('$_totalTransaksi Transaksi', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                      ),
+                      const SizedBox(height: 4),
+                      // TEKS KOTAK MERAH: Menampilkan jumlah hari aktif
+                      Text(
+                        _labelHari, 
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD32F2F))
+                      ),
+                    ],
+                  ),
                 ]),
                 const SizedBox(height: 4),
                 Align(alignment: Alignment.centerLeft, child: Text(_currencyFormat.format(_totalOmset), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFD32F2F), fontSize: 22))),
