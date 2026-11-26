@@ -163,8 +163,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     if (result['failed'] == 0) {
       _snack('Berhasil sinkron ${result['success']} transaksi');
     } else {
-      _snack('Berhasil ${result['success']}, gagal ${result['failed']}. Error: $lastError');
-    }
+      _snack('Gagal: ${ApiService.lastError}');
   }
 
   Future<void> _paksaHijau() async {
