@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -239,7 +240,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     final items = (jsonDecode(trx['items_json']) as List<dynamic>).map((item) => Map<String, dynamic>.from(item as Map)).toList();
     final method = ValueNotifier<String>(trx['metode']?.toString() ?? 'Tunai');
     
-    // Variabel untuk menyimpan tanggal sementara
     DateTime currentDate;
     try {
       currentDate = DateTime.parse('${trx['tanggal']} ${trx['waktu']}');
@@ -259,7 +259,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
             title: Text('Edit Transaksi', style: const TextStyle(fontSize: 16)),
             content: SizedBox(width: double.maxFinite, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
               
-              // Tombol Pilih Tanggal
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.calendar_today, color: Colors.blue),
@@ -274,15 +273,12 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                     lastDate: DateTime(2030),
                   );
                   if (picked != null) {
-                    setDialogState(() {
-                      currentDate = picked;
-                    });
+                    setDialogState(() => currentDate = picked);
                   }
                 },
               ),
               const Divider(),
 
-              // List Produk
               ...items.asMap().entries.map((entry) {
                 final index = entry.key;
                 final item = entry.value;
@@ -299,7 +295,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
               Align(alignment: Alignment.centerRight, child: Text('Total: ${_currencyFormat.format(total())}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               const SizedBox(height: 8),
               
-              // Metode Pembayaran
               ValueListenableBuilder<String>(valueListenable: method, builder: (context, value, _) => DropdownButtonFormField<String>(
                 value: value.toLowerCase() == 'qris' ? 'QRIS' : (value.toLowerCase() == 'kris' ? 'QRIS' : 'Tunai'), 
                 decoration: const InputDecoration(labelText: 'Metode pembayaran'), 
@@ -320,11 +315,10 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                 final newTotal = total();
                 final resultItems = items.map((item) => Map<String, dynamic>.from(item)).toList();
                 
-                // Format tanggal baru, dan PAKSA JAM MENJADI 00:00:00
                 final newTanggal = DateFormat('yyyy-MM-dd').format(currentDate);
                 final newWaktu = '00:00:00'; 
 
-                // Simpan ke DB Lokal
+                // 1. Simpan CEPAT ke DB Lokal (Offline First)
                 await DatabaseHelper.instance.editTransaksi({
                   'id_transaksi': id, 
                   'tanggal': newTanggal, 
@@ -335,40 +329,32 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                   'status_sync': (trx['status_sync'] as num).toInt() == 1 ? 1 : 0
                 });
 
+                // 2. Jika sebelumnya sudah sinkron, kirim ke antrean
                 final wasSynced = (trx['status_sync'] as num).toInt() == 1;
-                
-                // Jika sebelumnya sudah sinkron ke Sheet, update juga di Sheet
                 if (wasSynced && url.isNotEmpty) {
-                  final serverOk = await ApiService.editTransaksi(
-                    url: url, 
-                    namaCabang: branch, 
-                    idTransaksi: id, 
-                    tanggal: newTanggal, 
-                    waktu: newWaktu, 
-                    total: newTotal, 
-                    metode: normalizedMethod, 
-                    items: resultItems
+                  await DatabaseHelper.instance.enqueueSyncOperation(
+                    id: id, 
+                    action: 'upsert', 
+                    payload: {
+                      'action': 'simpanTransaksi', 
+                      'id_transaksi': id, 
+                      'nama_cabang': branch, 
+                      'nama_kasir': kasir, 
+                      'metode': normalizedMethod, 
+                      'tanggal': newTanggal, 
+                      'waktu': newWaktu, 
+                      'items': resultItems
+                    }
                   );
-                  
-                  if (!serverOk) {
-                    await DatabaseHelper.instance.enqueueSyncOperation(
-                      id: id, 
-                      action: 'upsert', 
-                      payload: {
-                        'action': 'simpanTransaksi', 
-                        'id_transaksi': id, 
-                        'nama_cabang': branch, 
-                        'nama_kasir': kasir, 
-                        'metode': normalizedMethod, 
-                        'tanggal': newTanggal, 
-                        'waktu': newWaktu, 
-                        'items': resultItems
-                      }
-                    );
-                    await DatabaseHelper.instance.updateStatusSyncPending(id);
-                  }
                 }
+                
+                // 3. TUTUP DIALOG LANGSUNG
                 if (dialogContext.mounted) Navigator.pop(dialogContext, resultItems);
+                
+                // 4. Tembak ke Internet di BELAKANG LAYAR
+                if (wasSynced && url.isNotEmpty) {
+                  unawaited(SyncService.instance.syncPending());
+                }
               }, child: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Simpan')),
             ],
           );
@@ -378,7 +364,7 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       await _loadRiwayat();
       _snack('Transaksi berhasil diperbarui');
     } finally { 
-      // Biarkan kosong agar tidak crash
+      // Biarkan kosong
     }
   }
 
