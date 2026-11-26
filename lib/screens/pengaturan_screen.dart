@@ -7,7 +7,7 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import '../services/api_service.dart';
 import '../services/database_helper.dart';
 import '../services/printer_service.dart';
-import '../utils/product_image_storage.dart'; // PERBAIKAN BUG 3: Import fungsi simpan gambar
+import '../utils/product_image_storage.dart';
 import 'setup_screen.dart';
 
 class PengaturanScreen extends StatefulWidget {
@@ -25,6 +25,8 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   String? _selectedPrinterAddress;
   bool _loadingPrinters = false;
   bool _isLoadingTarik = false;
+  
+  bool _isOwner = false; // Status Owner
 
   @override
   void initState() {
@@ -49,6 +51,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       _namaCabang = prefs.getString('nama_cabang') ?? '';
       _produkList = produk;
       _selectedPrinterAddress = prefs.getString('printer_address');
+      _isOwner = prefs.getBool('is_owner') ?? false;
     });
   }
 
@@ -138,46 +141,11 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   }
 
   void _editInfoTokoDialog() {
+    if (!_isOwner) return; // Proteksi ekstra
+
     final pinC = TextEditingController();
     final kasirC = TextEditingController(text: _namaKasir);
     final cabangC = TextEditingController(text: _namaCabang);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Verifikasi PIN'),
-        content: TextField(
-          controller: pinC,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Masukkan PIN (Default: 123456)'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              pinC.dispose();
-              kasirC.dispose();
-              cabangC.dispose();
-              Navigator.pop(ctx);
-            },
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (pinC.text == '123456') {
-                Navigator.pop(ctx);
-                _showFormEditToko(kasirC, cabangC);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN Salah!')));
-              }
-            },
-            child: const Text('Buka'),
-          ),
-        ],
-      ),
-    ).whenComplete(() => pinC.dispose());
-  }
-
-  void _showFormEditToko(TextEditingController kasirC, TextEditingController cabangC) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -190,6 +158,13 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              pinC.dispose(); kasirC.dispose(); cabangC.dispose();
+              Navigator.pop(ctx);
+            }, 
+            child: const Text('Batal')
+          ),
           ElevatedButton(
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
@@ -205,10 +180,72 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           ),
         ],
       ),
-    );
+    ).whenComplete(() => pinC.dispose());
+  }
+
+  void _loginOwnerDialog() {
+    final pinC = TextEditingController();
+    bool loading = false;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Masuk Mode Owner'),
+            content: TextField(
+              controller: pinC,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Masukkan PIN Owner', border: OutlineInputBorder()),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+              ElevatedButton(
+                onPressed: loading ? null : () async {
+                  setDialogState(() => loading = true);
+                  final prefs = await SharedPreferences.getInstance();
+                  final url = prefs.getString('url_appscript') ?? '';
+                  final branch = prefs.getString('nama_cabang') ?? '';
+                  
+                  if (url.isEmpty) {
+                    setDialogState(() => loading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL Apps Script kosong!')));
+                    return;
+                  }
+                  
+                  final ok = await ApiService.cekPinOwner(url, branch, pinC.text);
+                  setDialogState(() => loading = false);
+                  
+                  if (ok) {
+                    await prefs.setBool('is_owner', true);
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                    setState(() => _isOwner = true);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil masuk Mode Owner')));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiService.lastError.isEmpty ? 'PIN Salah' : ApiService.lastError)));
+                  }
+                },
+                child: loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Login'),
+              ),
+            ],
+          );
+        }
+      ),
+    ).whenComplete(() => pinC.dispose());
+  }
+
+  void _logoutOwner() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_owner', false);
+    if (mounted) setState(() => _isOwner = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kembali ke Mode Kasir')));
   }
 
   void _showProdukDialog({Map<String, dynamic>? produk}) {
+    if (!_isOwner) return; // Kasir tidak boleh edit produk
+
     final namaC = TextEditingController(text: produk?['nama']);
     final hargaC = TextEditingController(text: produk?['harga'].toString());
     final kategoriC = TextEditingController(text: produk?['kategori'] ?? 'Makanan');
@@ -227,7 +264,6 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
                 else
                   Container(height: 100, width: 100, color: Colors.grey[300], child: const Icon(Icons.image, size: 50)),
                 
-                // PERBAIKAN BUG 3: Simpan gambar permanen
                 TextButton.icon(
                   onPressed: () async {
                     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -252,9 +288,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              namaC.dispose();
-              hargaC.dispose();
-              kategoriC.dispose();
+              namaC.dispose(); hargaC.dispose(); kategoriC.dispose();
               Navigator.pop(ctx);
             },
             child: const Text('Batal'),
@@ -281,9 +315,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
               } else {
                 await DatabaseHelper.instance.editProduk(data);
               }
-              namaC.dispose();
-              hargaC.dispose();
-              kategoriC.dispose();
+              namaC.dispose(); hargaC.dispose(); kategoriC.dispose();
               if (!ctx.mounted) return;
               Navigator.pop(ctx);
               await _loadData();
@@ -307,11 +339,53 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _sectionTitle('Daftar Produk'),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(onPressed: () => _showProdukDialog(), icon: const Icon(Icons.add), label: const Text('Tambah Produk')),
+          // --- KARTU MODE OWNER / KASIR ---
+          if (!_isOwner)
+            Card(
+              color: Colors.orange[50],
+              child: ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
+                title: const Text('Mode Kasir', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Klik untuk masuk sebagai Owner'),
+                trailing: ElevatedButton(
+                  onPressed: _loginOwnerDialog,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  child: const Text('Login Owner', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            )
+          else
+            Card(
+              color: Colors.green[50],
+              child: ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.green),
+                title: const Text('Mode Owner Aktif', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                trailing: TextButton(
+                  onPressed: _logoutOwner,
+                  child: const Text('Logout Owner'),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          // ---------------------------------
+
+          _sectionTitle('Informasi Toko'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.store),
+              title: Text('Cabang: $_namaCabang'),
+              subtitle: Text('Kasir: $_namaKasir'),
+              trailing: _isOwner ? IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: _editInfoTokoDialog) : null,
+            ),
           ),
+          const Divider(height: 32),
+          
+          _sectionTitle('Daftar Produk'),
+          if (_isOwner)
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(onPressed: () => _showProdukDialog(), icon: const Icon(Icons.add), label: const Text('Tambah Produk')),
+            ),
           const SizedBox(height: 8),
           ..._produkList.map((p) => Card(
                 child: ListTile(
@@ -320,7 +394,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
                       : const Icon(Icons.fastfood),
                   title: Text(p['nama']),
                   subtitle: Text('Rp ${p['harga']} | ${p['kategori']}'),
-                  trailing: Row(
+                  trailing: _isOwner ? Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showProdukDialog(produk: p)),
@@ -332,10 +406,11 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
                         },
                       ),
                     ],
-                  ),
+                  ) : null,
                 ),
               )),
           const Divider(height: 32),
+          
           _sectionTitle('Printer Thermal Bluetooth 58mm'),
           Card(
             child: Column(
@@ -361,20 +436,13 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
             ),
           ),
           const Divider(height: 32),
-          _sectionTitle('Informasi Toko'),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.store),
-              title: Text('Cabang: $_namaCabang'),
-              subtitle: Text('Kasir: $_namaKasir'),
-              trailing: IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: _editInfoTokoDialog),
-            ),
-          ),
-          const Divider(height: 32),
+          
           _sectionTitle('URL Google Apps Script'),
-          TextField(controller: _urlController, decoration: const InputDecoration(labelText: 'URL Web App (/exec)', border: OutlineInputBorder())),
-          const SizedBox(height: 8),
-          Align(alignment: Alignment.centerRight, child: ElevatedButton(onPressed: _simpanUrl, child: const Text('Simpan URL'))),
+          TextField(controller: _urlController, decoration: const InputDecoration(labelText: 'URL Web App (/exec)', border: OutlineInputBorder()), readOnly: !_isOwner),
+          if (_isOwner) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerRight, child: ElevatedButton(onPressed: _simpanUrl, child: const Text('Simpan URL'))),
+          ],
           
           const SizedBox(height: 16),
           ElevatedButton.icon(
