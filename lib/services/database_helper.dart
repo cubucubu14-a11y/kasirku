@@ -45,10 +45,13 @@ class DatabaseHelper {
     await db.insert('produk', {'id': 'P004', 'nama': 'Air Mineral', 'harga': 5000, 'kategori': 'Minuman'});
   }
 
+  // --- FUNGSI PRODUK ---
   Future<List<Map<String, dynamic>>> getProduk() async => (await database).query('produk');
   Future<int> tambahProduk(Map<String, dynamic> data) async => (await database).insert('produk', data);
   Future<int> editProduk(Map<String, dynamic> data) async => (await database).update('produk', data, where: 'id = ?', whereArgs: [data['id']]);
   Future<int> hapusProduk(String id) async => (await database).delete('produk', where: 'id = ?', whereArgs: [id]);
+
+  // --- FUNGSI TRANSAKSI ---
   Future<int> simpanTransaksi(Map<String, dynamic> trx) async => (await database).insert('transaksi', trx);
 
   Future<void> simpanTransaksiOffline(Map<String, dynamic> trx, Map<String, dynamic> payload) async {
@@ -97,9 +100,32 @@ class DatabaseHelper {
     });
   }
 
+  // --- FUNGSI GET TRANSAKSI (DIPERBARUI) ---
   Future<List<Map<String, dynamic>>> getTransaksi({String? filterTanggal}) async {
     final db = await database;
-    if (filterTanggal != null && filterTanggal.isNotEmpty) return db.query('transaksi', where: 'tanggal LIKE ?', whereArgs: ['$filterTanggal%'], orderBy: 'tanggal DESC, waktu DESC');
+    if (filterTanggal != null && filterTanggal.isNotEmpty) {
+      if (filterTanggal.length == 7) {
+        // Filter Bulan (format YYYY-MM)
+        return db.query('transaksi', where: 'tanggal LIKE ?', whereArgs: ['$filterTanggal%'], orderBy: 'tanggal DESC, waktu DESC');
+      } else {
+        // Filter Tanggal Spesifik (format YYYY-MM-DD)
+        return db.query('transaksi', where: 'tanggal = ?', whereArgs: [filterTanggal], orderBy: 'tanggal DESC, waktu DESC');
+      }
+    }
+    return db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
+  }
+
+  // FUNGSI BARU: Filter Rentang Tanggal (Mulai - Selesai)
+  Future<List<Map<String, dynamic>>> getTransaksiRange({String? startDate, String? endDate}) async {
+    final db = await database;
+    if (startDate != null && endDate != null) {
+      return db.query(
+        'transaksi',
+        where: 'tanggal >= ? AND tanggal <= ?',
+        whereArgs: [startDate, endDate],
+        orderBy: 'tanggal DESC, waktu DESC',
+      );
+    }
     return db.query('transaksi', orderBy: 'tanggal DESC, waktu DESC');
   }
 
@@ -107,7 +133,7 @@ class DatabaseHelper {
   Future<int> updateStatusSync(String id) async => (await database).update('transaksi', {'status_sync': 1}, where: 'id_transaksi = ?', whereArgs: [id]);
   Future<int> updateStatusSyncPending(String id) async => (await database).update('transaksi', {'status_sync': 0}, where: 'id_transaksi = ?', whereArgs: [id]);
   
-  // PERBAIKAN FASE 3: Hapus transaksi + hapus antrean
+  // FUNGSI HAPUS TRANSAKSI + ANTREAN
   Future<int> hapusTransaksi(String id) async {
     final db = await database;
     return await db.transaction((txn) async {
