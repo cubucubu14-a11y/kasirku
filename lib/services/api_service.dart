@@ -5,6 +5,32 @@ import 'package:intl/intl.dart';
 class ApiService {
   static String lastError = '';
 
+  // Token API, diisi saat build: --dart-define=API_TOKEN=xxxx
+  static const String token = String.fromEnvironment('API_TOKEN');
+
+  // Aksi yang wajib PIN Owner di server
+  static const Set<String> _ownerActions = {
+    'editTransaksi',
+    'hapusTransaksi',
+    'voidTransaksi',
+  };
+  static const Duration _pinValidFor = Duration(minutes: 2);
+  static String? _ownerPin;
+  static DateTime? _ownerPinAt;
+
+  /// Panggil saat logout / kunci aplikasi.
+  static void clearOwnerPin() {
+    _ownerPin = null;
+    _ownerPinAt = null;
+  }
+
+  static bool get _ownerPinValid {
+    final at = _ownerPinAt;
+    return _ownerPin != null &&
+        at != null &&
+        DateTime.now().difference(at) < _pinValidFor;
+  }
+
   static Future<Map<String, dynamic>?> _post(String url, Map<String, dynamic> body) async {
     lastError = '';
 
@@ -14,10 +40,22 @@ class ApiService {
       return null;
     }
 
+    // Susun payload: sisipkan token, dan PIN untuk aksi owner
+    final payload = Map<String, dynamic>.from(body);
+    if (token.isNotEmpty) payload['token'] = token;
+
+    if (_ownerActions.contains(payload['action']) && !payload.containsKey('pin')) {
+      if (!_ownerPinValid) {
+        lastError = 'Verifikasi PIN Owner dulu';
+        return null;
+      }
+      payload['pin'] = _ownerPin;
+    }
+
     try {
       var response = await http.post(uri,
               headers: const {'Content-Type': 'application/json'},
-              body: jsonEncode(body))
+              body: jsonEncode(payload))
           .timeout(const Duration(seconds: 30));
 
       if ([301, 302, 303, 307, 308].contains(response.statusCode) &&
@@ -57,12 +95,21 @@ class ApiService {
     return false;
   }
 
+  static List<Map<String, dynamic>> _safeItems(List<Map<String, dynamic>> items) {
+    return items
+        .map((e) => {
+              'nama': e['nama'].toString(),
+              'qty': (e['qty'] as num).toInt(),
+              'harga': (e['harga'] as num).toInt(),
+            })
+        .toList();
+  }
+
   static Future<bool> setupCabang(String url, String namaCabang) async {
     final data = await _post(url, {'action': 'setupCabang', 'namaCabang': namaCabang});
     return _ok(data);
   }
 
-  // --- PERBAIKAN: Fungsi kirim transaksi yang lebih aman ---
   static Future<bool> kirimTransaksi(
     String url,
     String namaCabang,
@@ -76,13 +123,6 @@ class ApiService {
     final now = DateTime.now();
     final tgl = tanggal ?? DateFormat('yyyy-MM-dd').format(now);
     final wkt = waktu ?? DateFormat('HH:mm:ss').format(now);
-    
-    // Pastikan item di-encode dengan aman dan bersih
-    final safeItems = items.map((e) => {
-      'nama': e['nama'].toString(),
-      'qty': (e['qty'] as num).toInt(),
-      'harga': (e['harga'] as num).toInt(),
-    }).toList();
 
     final data = await _post(url, {
       'action': 'simpanTransaksi',
@@ -92,11 +132,13 @@ class ApiService {
       'metode': metode ?? 'Tunai',
       'tanggal': tgl,
       'waktu': wkt,
-      'items': safeItems,
+      'items': _safeItems(items),
     });
     return _ok(data);
   }
 
+  // PIN dikirim otomatis dari hasil cekPinOwner() (berlaku 2 menit).
+  // Jika items kosong, server hanya mengubah nominal (total).
   static Future<bool> editTransaksi({
     required String url,
     required String namaCabang,
@@ -115,7 +157,7 @@ class ApiService {
       'waktu': waktu,
       'total': total,
       'metode': metode,
-      'items': items,
+      if (items.isNotEmpty) 'items': _safeItems(items),
     });
     return _ok(data);
   }
@@ -142,16 +184,21 @@ class ApiService {
     return _ok(data);
   }
 
-  // --- FUNGSI BARU UNTUK CEK PIN OWNER ---
   static Future<bool> cekPinOwner(String url, String namaCabang, String pin) async {
     final data = await _post(url, {
       'action': 'cekPinOwner',
       'nama_cabang': namaCabang,
       'pin': pin,
     });
-    return _ok(data);
+    final ok = _ok(data);
+    if (ok) {
+      _ownerPin = pin;
+      _ownerPinAt = DateTime.now();
+    } else {
+      clearOwnerPin();
+    }
+    return ok;
   }
-  // ----------------------------------------
 
   static Future<List<String>?> getDataIdsForDate(String url, String namaCabang, String tanggal) async {
     final data = await _post(url, {
