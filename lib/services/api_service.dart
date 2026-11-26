@@ -27,9 +27,7 @@ class ApiService {
           lastError = 'Redirect server tidak aman';
           return null;
         }
-        response = await http
-            .get(location)
-            .timeout(const Duration(seconds: 30));
+        response = await http.get(location).timeout(const Duration(seconds: 30));
       }
 
       if (response.statusCode != 200) {
@@ -60,8 +58,7 @@ class ApiService {
   }
 
   static Future<bool> setupCabang(String url, String namaCabang) async {
-    final data = await _post(url,
-        {'action': 'setupCabang', 'namaCabang': namaCabang});
+    final data = await _post(url, {'action': 'setupCabang', 'namaCabang': namaCabang});
     return _ok(data);
   }
 
@@ -127,8 +124,7 @@ class ApiService {
     return _ok(data);
   }
 
-  static Future<bool> voidTransaksi(
-      String url, String namaCabang, String idTransaksi) async {
+  static Future<bool> voidTransaksi(String url, String namaCabang, String idTransaksi) async {
     final data = await _post(url, {
       'action': 'voidTransaksi',
       'id_transaksi': idTransaksi,
@@ -137,8 +133,17 @@ class ApiService {
     return _ok(data);
   }
 
-  static Future<List<String>?> getDataIdsForDate(
-      String url, String namaCabang, String tanggal) async {
+  // TAMBAHAN UNTUK CEK PIN OWNER
+  static Future<bool> cekPinOwner(String url, String namaCabang, String pin) async {
+    final data = await _post(url, {
+      'action': 'cekPinOwner',
+      'nama_cabang': namaCabang,
+      'pin': pin,
+    });
+    return _ok(data);
+  }
+
+  static Future<List<String>?> getDataIdsForDate(String url, String namaCabang, String tanggal) async {
     final data = await _post(url, {
       'action': 'get-data-kasir',
       'nama_cabang': namaCabang,
@@ -151,8 +156,7 @@ class ApiService {
     return [];
   }
 
-  static Future<Map<String, dynamic>?> tarikTransaksi(
-      String url, String namaCabang, String idTransaksi) async {
+  static Future<Map<String, dynamic>?> tarikTransaksi(String url, String namaCabang, String idTransaksi) async {
     final data = await _post(url, {
       'action': 'tarikTransaksi',
       'nama_cabang': namaCabang,
@@ -162,17 +166,14 @@ class ApiService {
     return data['data'] as Map<String, dynamic>?;
   }
 
-  static Future<List<Map<String, dynamic>>?> tarikSemuaData(
-      String url, String namaCabang) async {
+  static Future<List<Map<String, dynamic>>?> tarikSemuaData(String url, String namaCabang) async {
     final data = await _post(url, {
       'action': 'tarikSemuaData',
       'nama_cabang': namaCabang,
     });
     if (data == null || data['status'] != 'success') return null;
     if (data['data'] is List) {
-      return (data['data'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      return (data['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
     return [];
   }
