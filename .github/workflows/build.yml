@@ -143,7 +143,6 @@ jobs:
 
       - name: Patch flutter_bluetooth_serial
         run: |
-          # PERBAIKAN: Mengabaikan folder 'example' agar tidak salah sasaran
           F=$(find $HOME/.pub-cache -path "*flutter_bluetooth_serial-*/android/build.gradle" ! -path "*/example/*" | head -1)
           
           if [ -z "$F" ]; then
@@ -152,18 +151,13 @@ jobs:
           fi
           echo "Patching file: $F"
 
-          # 1. Tambahkan namespace
           if ! grep -q "namespace" "$F"; then
             sed -i '0,/^android {/s//android {\n    namespace "io.github.edufolly.flutterbluetoothserial"/' "$F"
           fi
 
-          # 2. Naikkan compileSdk
           sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' "$F"
-
-          # 3. Ganti jcenter ke mavenCentral
           sed -i 's/jcenter()/mavenCentral()/g' "$F"
 
-          # 4. Hapus atribut package di manifest
           M="$(dirname "$F")/src/main/AndroidManifest.xml"
           sed -i 's/ package="[^"]*"//' "$M"
 
@@ -175,22 +169,22 @@ jobs:
       - name: Rename APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
+             build/app/outputs/flutter-apk/kasirku-v5.4.0-laporan.apk
 
       - name: Upload APK ke Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kasirku-apk-final
-          path: build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
+          name: kasirku-apk-laporan
+          path: build/app/outputs/flutter-apk/kasirku-v5.4.0-laporan.apk
           retention-days: 30
 
       - name: Buat Release otomatis
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v5.2.0-final
-          name: "Kasirku v5.2.0 - Final Release"
-          body: "Rilis perbaikan patch library dan fitur edit tanggal."
-          files: build/app/outputs/flutter-apk/kasirku-v5.2.0-final.apk
+          tag_name: v5.4.0-laporan
+          name: "Kasirku v5.4.0 - Laporan Rentang Tanggal"
+          body: "Rilis dengan fitur filter rentang tanggal (Custom Range) dan hitung hari aktif penjualan."
+          files: build/app/outputs/flutter-apk/kasirku-v5.4.0-laporan.apk
           draft: false
           prerelease: false
         env:
