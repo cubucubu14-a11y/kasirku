@@ -69,7 +69,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       }
     }
 
-    // Ambil data dengan filter rentang tanggal
     final data = await DatabaseHelper.instance.getTransaksiRange(
       startDate: startFilter,
       endDate: endFilter,
@@ -96,14 +95,12 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     _loadRiwayat();
   }
 
-  // FUNGSI BARU: Hitung Hari Aktif (Hari Libur tidak dihitung)
   int get _totalHariAktif {
     if (_transaksiAktif.isEmpty) return 0;
     final uniqueDates = _transaksiAktif.map((t) => t['tanggal'].toString()).toSet();
     return uniqueDates.length;
   }
 
-  // Teks untuk Kotak Merah
   String get _labelHari {
     if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
     if (_filterAktif == 'Bulan Ini') return 'Data Bulan Ini';
@@ -160,10 +157,13 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       if (mounted) setState(() => _sedangSinkron = false);
     }
     await _loadRiwayat();
+    
+    // PERBAIKAN: Menampilkan error dari ApiService
     if (result['failed'] == 0) {
       _snack('Berhasil sinkron ${result['success']} transaksi');
     } else {
       _snack('Gagal: ${ApiService.lastError}');
+    }
   }
 
   Future<void> _paksaHijau() async {
@@ -637,7 +637,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
                         child: Text('$_totalTransaksi Transaksi', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
                       ),
                       const SizedBox(height: 4),
-                      // TEKS KOTAK MERAH: Menampilkan jumlah hari aktif
                       Text(
                         _labelHari, 
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD32F2F))
