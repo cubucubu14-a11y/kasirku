@@ -62,6 +62,7 @@ class ApiService {
     return _ok(data);
   }
 
+  // --- PERBAIKAN: Fungsi kirim transaksi yang lebih aman ---
   static Future<bool> kirimTransaksi(
     String url,
     String namaCabang,
@@ -75,6 +76,14 @@ class ApiService {
     final now = DateTime.now();
     final tgl = tanggal ?? DateFormat('yyyy-MM-dd').format(now);
     final wkt = waktu ?? DateFormat('HH:mm:ss').format(now);
+    
+    // Pastikan item di-encode dengan aman dan bersih
+    final safeItems = items.map((e) => {
+      'nama': e['nama'].toString(),
+      'qty': (e['qty'] as num).toInt(),
+      'harga': (e['harga'] as num).toInt(),
+    }).toList();
+
     final data = await _post(url, {
       'action': 'simpanTransaksi',
       'id_transaksi': idTransaksi ?? 'TRX-${now.millisecondsSinceEpoch}',
@@ -83,7 +92,7 @@ class ApiService {
       'metode': metode ?? 'Tunai',
       'tanggal': tgl,
       'waktu': wkt,
-      'items': items,
+      'items': safeItems,
     });
     return _ok(data);
   }
@@ -133,7 +142,7 @@ class ApiService {
     return _ok(data);
   }
 
-  // TAMBAHAN UNTUK CEK PIN OWNER
+  // --- FUNGSI BARU UNTUK CEK PIN OWNER ---
   static Future<bool> cekPinOwner(String url, String namaCabang, String pin) async {
     final data = await _post(url, {
       'action': 'cekPinOwner',
@@ -142,6 +151,7 @@ class ApiService {
     });
     return _ok(data);
   }
+  // ----------------------------------------
 
   static Future<List<String>?> getDataIdsForDate(String url, String namaCabang, String tanggal) async {
     final data = await _post(url, {
