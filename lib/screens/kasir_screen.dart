@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math'; // TAMBAHAN UNTUK RANDOM
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -277,7 +277,6 @@ class _KasirScreenState extends State<KasirScreen> {
 
   Future<void> _previewStruk(String metode, int bayar, int kembali) async {
     final now = DateTime.now();
-    // PERBAIKAN BUG 2: Menambahkan Random agar ID tidak bentrok
     final random = Random();
     final idTrx = 'TRX-${now.millisecondsSinceEpoch}-${random.nextInt(999)}';
     
@@ -359,9 +358,7 @@ class _KasirScreenState extends State<KasirScreen> {
           'metode': metode,
           'tanggal': tanggal,
           'waktu': waktu,
-          'items': _keranjang
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList(),
+          'items': _keranjang.map((item) => Map<String, dynamic>.from(item)).toList(),
         },
       );
 
@@ -407,6 +404,12 @@ class _KasirScreenState extends State<KasirScreen> {
   @override
   Widget build(BuildContext context) {
     final produkTampil = _produkList.where((p) => _kategoriAktif == 'Semua' || p['kategori'] == _kategoriAktif).toList();
+    
+    // PERBAIKAN RESPONSIVE: Cek apakah layar lebar (Tablet) atau HP
+    final isTablet = MediaQuery.of(context).size.width > 600;
+    // Kalau tablet 4 kolom, kalau HP 2 kolom
+    final crossAxisCount = isTablet ? 4 : 2; 
+
     return Scaffold(
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Kasir: $_namaCabang', style: const TextStyle(fontSize: 16)), Text('Petugas: $_namaKasir', style: const TextStyle(fontSize: 12))]),
@@ -418,11 +421,12 @@ class _KasirScreenState extends State<KasirScreen> {
           final active = _kategoriAktif == kat;
           return Padding(padding: const EdgeInsets.only(right: 12), child: ChoiceChip(label: Text(kat), selected: active, onSelected: (_) => setState(() => _kategoriAktif = kat), selectedColor: const Color(0xFFFFF0F0), labelStyle: TextStyle(color: active ? const Color(0xFFD32F2F) : Colors.black87, fontWeight: FontWeight.bold)));
         }).toList())),
+        
         Expanded(child: GridView.builder(
           padding: const EdgeInsets.all(12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, 
-            childAspectRatio: 0.75, // Kartu lebih tinggi
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount, // INI BERUBAH OTOMATIS
+            childAspectRatio: 0.75, 
             crossAxisSpacing: 12, 
             mainAxisSpacing: 12
           ),
@@ -436,68 +440,36 @@ class _KasirScreenState extends State<KasirScreen> {
               borderRadius: BorderRadius.circular(12),
               child: Card(
                 elevation: 2,
-                clipBehavior: Clip.antiAlias, // Agar sudut gambar melengkung
+                clipBehavior: Clip.antiAlias, 
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // 1. GAMBAR FULL (Mentok ke seluruh kartu)
                     if (!isGambarKosong)
-                      Image.file(
-                        File(produk['gambar']),
-                        fit: BoxFit.cover,
-                      )
+                      Image.file(File(produk['gambar']), fit: BoxFit.cover)
                     else
-                      Container(color: const Color(0xFFFFF5F5)), // Warna dasar jika tak ada gambar
+                      Container(color: const Color(0xFFFFF5F5)), 
 
-                    // 2. GRADASI HITAM & TEKS (Menimpa gambar)
                     Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
+                      bottom: 0, left: 0, right: 0,
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(12, 30, 12, 12),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              isGambarKosong ? const Color(0xFFFFF5F5).withOpacity(0.0) : Colors.black.withOpacity(0.85), // Gradasi hitam
-                            ],
+                            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, isGambarKosong ? const Color(0xFFFFF5F5).withOpacity(0.0) : Colors.black.withOpacity(0.85)],
                           ),
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              produk['nama'],
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold, 
-                                fontSize: 14, 
-                                color: isGambarKosong ? Colors.black : Colors.white // Teks hitam jika no image
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            Text(produk['nama'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isGambarKosong ? Colors.black : Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  _currencyFormat.format(produk['harga']),
-                                  style: TextStyle(
-                                    color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.add_circle, 
-                                  color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white, 
-                                  size: 24
-                                ),
+                                Text(_currencyFormat.format(produk['harga']), style: TextStyle(color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                Icon(Icons.add_circle, color: isGambarKosong ? const Color(0xFFD32F2F) : Colors.white, size: 24),
                               ],
                             ),
                           ],
@@ -511,7 +483,18 @@ class _KasirScreenState extends State<KasirScreen> {
           },
         )),
       ]),
-      floatingActionButton: _keranjang.isNotEmpty ? FloatingActionButton.extended(onPressed: _bukaKeranjang, backgroundColor: const Color(0xFFD32F2F), icon: const Icon(Icons.shopping_cart), label: Text('${_keranjang.length} Item - ${_currencyFormat.format(_totalBelanja)}')) : null,
+      floatingActionButton: _keranjang.isNotEmpty 
+          ? FloatingActionButton.extended(
+              onPressed: _bukaKeranjang, 
+              backgroundColor: const Color(0xFFD32F2F), 
+              icon: const Icon(Icons.shopping_cart), 
+              label: Text('${_keranjang.length} Item - ${_currencyFormat.format(_totalBelanja)}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              )
+            ) 
+          : null,
+      // PERBAIKAN RESPONSIVE: Tombol keranjang di tengah bawah jika di tablet
+      floatingActionButtonLocation: isTablet ? FloatingActionButtonLocation.centerFloat : FloatingActionButtonLocation.endFloat,
     );
   }
 }
