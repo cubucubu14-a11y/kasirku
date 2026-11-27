@@ -26,7 +26,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   bool _loadingPrinters = false;
   bool _isLoadingTarik = false;
   
-  bool _isOwner = false; // Status Owner
+  bool _isOwner = false;
 
   @override
   void initState() {
@@ -44,6 +44,10 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final produk = await DatabaseHelper.instance.getProduk();
+    final savedPin = prefs.getString('owner_pin');
+    if (savedPin != null && savedPin.isNotEmpty) {
+      ApiService.setOwnerPin(savedPin);
+    }
     if (!mounted) return;
     setState(() {
       _urlController.text = prefs.getString('url_appscript') ?? '';
@@ -141,9 +145,8 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   }
 
   void _editInfoTokoDialog() {
-    if (!_isOwner) return; // Proteksi ekstra
+    if (!_isOwner) return;
 
-    final pinC = TextEditingController();
     final kasirC = TextEditingController(text: _namaKasir);
     final cabangC = TextEditingController(text: _namaCabang);
     showDialog<void>(
@@ -160,7 +163,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              pinC.dispose(); kasirC.dispose(); cabangC.dispose();
+              kasirC.dispose(); cabangC.dispose();
               Navigator.pop(ctx);
             }, 
             child: const Text('Batal')
@@ -180,7 +183,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           ),
         ],
       ),
-    ).whenComplete(() => pinC.dispose());
+    );
   }
 
   void _loginOwnerDialog() {
@@ -219,6 +222,7 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
                   
                   if (ok) {
                     await prefs.setBool('is_owner', true);
+                    await prefs.setString('owner_pin', pinC.text.trim());
                     if (!ctx.mounted) return;
                     Navigator.pop(ctx);
                     setState(() => _isOwner = true);
@@ -239,12 +243,14 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   void _logoutOwner() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_owner', false);
+    await prefs.remove('owner_pin');
+    ApiService.clearOwnerPin();
     if (mounted) setState(() => _isOwner = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kembali ke Mode Kasir')));
   }
 
   void _showProdukDialog({Map<String, dynamic>? produk}) {
-    if (!_isOwner) return; // Kasir tidak boleh edit produk
+    if (!_isOwner) return;
 
     final namaC = TextEditingController(text: produk?['nama']);
     final hargaC = TextEditingController(text: produk?['harga'].toString());
@@ -339,7 +345,6 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- KARTU MODE OWNER / KASIR ---
           if (!_isOwner)
             Card(
               color: Colors.orange[50],
@@ -367,7 +372,6 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
               ),
             ),
           const SizedBox(height: 16),
-          // ---------------------------------
 
           _sectionTitle('Informasi Toko'),
           Card(
