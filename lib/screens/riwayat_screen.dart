@@ -102,14 +102,11 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   String get _labelHari {
-  if (_totalHariAktif == 0) return 'Data 0 Hari';
-  
-  // Jika filter Hari Ini, kita bisa tampilkan "Data Hari Ini"
-  if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
-  
-  // Untuk Bulan Ini dan Custom, tampilkan jumlah hari aktif
-  return 'Data $_totalHariAktif Hari'; 
-}
+    if (_totalHariAktif == 0) return 'Data 0 Hari';
+    if (_filterAktif == 'Hari Ini') return 'Data Hari Ini';
+    return 'Data $_totalHariAktif Hari'; 
+  }
+
   List<Map<String, dynamic>> get _transaksiAktif => _riwayat.where((t) => (t['status_sync'] as num).toInt() != 2).toList();
   int get _totalTransaksi => _transaksiAktif.length;
   int get _totalOmset => _transaksiAktif.fold<int>(0, (sum, t) => sum + (t['total'] as num).toInt());
@@ -161,7 +158,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
     }
     await _loadRiwayat();
     
-    // PERBAIKAN: Menampilkan error dari ApiService
     if (result['failed'] == 0) {
       _snack('Berhasil sinkron ${result['success']} transaksi');
     } else {
@@ -418,25 +414,42 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
 
     final id = trx['id_transaksi'].toString();
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Hapus transaksi?'), content: const Text('Transaksi akan dihapus dari aplikasi dan Google Sheets.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus'))],
+      title: const Text('Hapus transaksi?'), 
+      content: const Text('Transaksi akan dihapus dari aplikasi dan Google Sheets.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')), 
+        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus'))
+      ],
     )) ?? false;
     if (!confirm) return;
+
+    setState(() => _sedangSinkron = true);
 
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('url_appscript') ?? '';
     final branch = prefs.getString('nama_cabang') ?? '';
 
-    await DatabaseHelper.instance.hapusTransaksi(id);
-    if (url.isNotEmpty) {
-      final serverOk = await ApiService.hapusTransaksi(url: url, namaCabang: branch, idTransaksi: id);
-      if (!serverOk) {
-        await DatabaseHelper.instance.enqueueSyncOperation(id: id, action: 'delete', payload: {'action': 'hapusTransaksi', 'id_transaksi': id, 'nama_cabang': branch});
-        _snack('Dihapus lokal. Sinkron hapus akan dicoba ulang otomatis.'); await _loadRiwayat(); return;
-      }
+    if (url.isEmpty) {
+      _snack('URL Apps Script kosong!');
+      setState(() => _sedangSinkron = false);
+      return;
     }
+
+    // Coba hapus ke server (PIN otomatis disisipkan oleh api_service)
+    final serverOk = await ApiService.hapusTransaksi(url: url, namaCabang: branch, idTransaksi: id);
+    
+    if (serverOk) {
+      await DatabaseHelper.instance.hapusTransaksi(id);
+      _snack('Transaksi berhasil dihapus dari HP dan Sheet');
+    } else {
+      // Jika gagal karena internet mati atau server error, tampilkan pesan
+      _snack('Gagal menghapus di server: ${ApiService.lastError}');
+      // Data di HP TIDAK dihapus agar tidak terjadi selisih data
+    }
+
+    if (!mounted) return;
+    setState(() => _sedangSinkron = false);
     await _loadRiwayat();
-    _snack('Transaksi dihapus');
   }
 
   Widget _buildOmsetMetode(String label, int amount, IconData icon, Color color) => Row(children: [
