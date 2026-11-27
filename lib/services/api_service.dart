@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 class ApiService {
   static String lastError = '';
 
-  // Token API, diisi saat build: --dart-define=API_TOKEN=xxxx
+  // Token API (Diisi saat build jika diperlukan)
   static const String token = String.fromEnvironment('API_TOKEN');
 
   // Aksi yang wajib PIN Owner di server
@@ -14,22 +14,18 @@ class ApiService {
     'hapusTransaksi',
     'voidTransaksi',
   };
-  static const Duration _pinValidFor = Duration(minutes: 2);
-  static String? _ownerPin;
-  static DateTime? _ownerPinAt;
 
-  /// Panggil saat logout / kunci aplikasi.
+  static String? _ownerPin;
+
   static void clearOwnerPin() {
     _ownerPin = null;
-    _ownerPinAt = null;
   }
 
-  static bool get _ownerPinValid {
-    final at = _ownerPinAt;
-    return _ownerPin != null &&
-        at != null &&
-        DateTime.now().difference(at) < _pinValidFor;
+  static void setOwnerPin(String pin) {
+    _ownerPin = pin;
   }
+
+  static bool get _ownerPinValid => _ownerPin != null && _ownerPin!.isNotEmpty;
 
   static Future<Map<String, dynamic>?> _post(String url, Map<String, dynamic> body) async {
     lastError = '';
@@ -40,10 +36,10 @@ class ApiService {
       return null;
     }
 
-    // Susun payload: sisipkan token, dan PIN untuk aksi owner
     final payload = Map<String, dynamic>.from(body);
     if (token.isNotEmpty) payload['token'] = token;
 
+    // Otomatis sisipkan PIN jika aksi ini butuh Owner
     if (_ownerActions.contains(payload['action']) && !payload.containsKey('pin')) {
       if (!_ownerPinValid) {
         lastError = 'Verifikasi PIN Owner dulu';
@@ -137,8 +133,6 @@ class ApiService {
     return _ok(data);
   }
 
-  // PIN dikirim otomatis dari hasil cekPinOwner() (berlaku 2 menit).
-  // Jika items kosong, server hanya mengubah nominal (total).
   static Future<bool> editTransaksi({
     required String url,
     required String namaCabang,
@@ -192,8 +186,7 @@ class ApiService {
     });
     final ok = _ok(data);
     if (ok) {
-      _ownerPin = pin;
-      _ownerPinAt = DateTime.now();
+      setOwnerPin(pin); // Simpan PIN di memori jika valid
     } else {
       clearOwnerPin();
     }
